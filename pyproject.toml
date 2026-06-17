@@ -15,10 +15,14 @@ keywords = ["kicad", "capacitive-touch", "footprint", "pcb", "eda", "slider", "t
 dependencies = ["shapely>=2.0"]
 
 [project.optional-dependencies]
-dev = ["pytest>=7"]
+gui = ["PySide6>=6.6"]
+dev = ["pytest>=7", "PySide6>=6.6"]
 
 [project.scripts]
 captouch = "captouch.cli:main"
+
+[project.gui-scripts]
+captouch-gui = "captouch.gui:main"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/captouch"]

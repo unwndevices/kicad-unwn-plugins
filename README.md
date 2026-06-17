@@ -9,18 +9,31 @@ KiCad's in-flux scripting API).
 License: **GPL-3.0-or-later**. See [`docs/plan.md`](docs/plan.md) for the architecture, stack, and
 roadmap, and the companion research in [`docs/`](docs).
 
-## Status — Phase 1 (slider engine, headless)
+## Status — Phase 2 (slider GUI)
 
-The headless slider engine is done: `params` → `geometry` (Shapely) → `export`, driven by a CLI.
-It generates **rectangular, chevron, and interdigitated** linear sliders with grounded end-dummy
-segments, enforces the Infineon `W + 2A = finger_diameter` constraint, and emits a footprint plus a
-matching symbol whose pins map 1:1 to the pads. Files are emitted in the **KiCad 9.0** format
-(footprint `version 20241229`, symbol lib `version 20241209`), which both KiCad 9 and 10 accept.
+The slider engine and a desktop GUI are done. The engine — `params` → `geometry` (Shapely) →
+`export` — generates **rectangular, chevron, and interdigitated** linear sliders with grounded
+end-dummy segments, enforces the Infineon `W + 2A = finger_diameter` constraint, and emits a
+footprint plus a matching symbol whose pins map 1:1 to the pads. Files are emitted in the
+**KiCad 9.0** format (footprint `version 20241229`, symbol lib `version 20241209`), which both
+KiCad 9 and 10 accept.
 
-Install (Shapely is the only runtime dependency):
+The **PySide6 GUI** wraps the same engine: a parameter panel with vendor presets drives a live
+`QGraphicsView` preview (zoom/pan, layer toggles) that renders the *same* geometry the exporters
+serialise — so the preview is byte-faithful to the exported copper — plus one-click export of the
+footprint + symbol.
+
+Install (Shapely is the only runtime dependency; the GUI adds PySide6):
 
 ```sh
-pip install -e .          # or: pip install shapely
+pip install -e .          # engine + CLI (or: pip install shapely)
+pip install -e '.[gui]'   # add the PySide6 desktop GUI
+```
+
+### Launch the GUI
+
+```sh
+captouch gui              # or: captouch-gui
 ```
 
 ### Generate a slider
@@ -48,5 +61,6 @@ PYTHONPATH=src python3 -m pytest        # unit + golden-file + kicad-cli gates
 ```
 
 The `kicad-cli` tests (footprint/symbol render, and **DRC-clean** on a generated test board) run
-automatically when `kicad-cli` is on `PATH`, and are skipped otherwise. The Phase-0 format spike is
-still emitted by `captouch spike`.
+automatically when `kicad-cli` is on `PATH`, and are skipped otherwise. The GUI tests run headless
+on Qt's `offscreen` platform (no display needed) and are skipped when PySide6 is absent. The Phase-0
+format spike is still emitted by `captouch spike`.

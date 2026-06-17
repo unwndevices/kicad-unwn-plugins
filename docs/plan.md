@@ -1,6 +1,6 @@
 # Touch Footprint Generator — Approach, Stack & Roadmap
 
-**Status:** in progress. Compiled 2026-06-17. **Phases 0–1 complete** (headless slider engine ships rectangular / chevron / interdigitated sliders, DRC-clean in KiCad 10); Phase 2 (GUI) is next.
+**Status:** in progress. Compiled 2026-06-17. **Phases 0–2 complete** (headless slider engine ships rectangular / chevron / interdigitated sliders, DRC-clean in KiCad 10; a PySide6 GUI gives a live preview and export); Phase 3 (wheel) is next.
 **Companion docs:** [`capacitive-touch-design-guidelines.md`](./capacitive-touch-design-guidelines.md) (the numbers the generator consumes) and [`touch-footprint-tools-landscape.md`](./touch-footprint-tools-landscape.md) (prior art and gaps this fills).
 
 A standalone, vendor-agnostic desktop tool that parametrically generates **capacitive-touch interface footprints** (sliders, wheels, XY diamond pads) for KiCad — with a **live visual preview**, emitting a ready-to-use **footprint (`.kicad_mod`) plus a matching schematic symbol (`.kicad_sym`)**. The landscape survey confirms nothing like this exists today: vendor tools are silicon-locked and geometry-blind, KiCad's own touch wizards are archived (2023) and cover only slider + mutual-cap button, and the few open generators are tiny and dormant.
@@ -74,7 +74,7 @@ Whole stack is **Python** — it is the language of every relevant prior-art gen
 |---|---|---|
 | **0 — Format spike** ✅ | Repo + packaging skeleton; emit one trivial `.kicad_mod` with a single custom-polygon copper pad and a one-pin `.kicad_sym`. | Opens without error in KiCad 9 and 10; `kicad-cli fp export svg` and `sym export svg` render it; round-trip parse is stable. |
 | **1 — Slider engine (headless)** ✅ | `params`+`geometry`+`export` for rectangular → chevron/interdigitated slider; `W+2A` constraint; dummy end segments; CLI. | Golden-file snapshots stable; `kicad-cli pcb drc` clean on a test board; pads ↔ symbol pins correct. |
-| **2 — Slider GUI** | PySide6 shell, parameter panel, **live preview**, export buttons; polished spacing/zoom/pan. | Editing any parameter updates the preview in real time; exported file matches the preview. |
+| **2 — Slider GUI** ✅ | PySide6 shell, parameter panel, **live preview**, export buttons; polished spacing/zoom/pan. | Editing any parameter updates the preview in real time; exported file matches the preview. |
 | **3 — Wheel** | Reuse slider interpolation bent into an annulus; arc tessellation; center keep-out; continuous (no end dummies). | Generates a valid 3+-segment wheel; DRC-clean; previewed live. |
 | **4 — XY diamond pad** | Mutual-cap diamond matrix; half-diamond edge termination; layer **bridges/vias**; Rx/Tx axis assignment. | Generates an N×M diamond pad with correct bridging; DRC-clean. (Highest complexity — may use zones for some fills.) |
 | **5 — Polish & distribution** | Vendor presets, fab-min-rule guards, cross-platform binaries, user docs. | Installable binary; presets reproduce vendor reference dimensions. |

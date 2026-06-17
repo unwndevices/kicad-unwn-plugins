@@ -1,6 +1,7 @@
-"""Command-line frontend over the same engine the GUI will use.
+"""Command-line frontend over the same engine the GUI uses.
 
 ``captouch slider``  generates a slider footprint + symbol from flags/presets.
+``captouch gui``     launches the PySide6 live-preview app (needs the gui extra).
 ``captouch spike``   emits the Phase-0 format-spike pair (kept as a smoke test).
 """
 
@@ -106,6 +107,26 @@ def _add_slider_parser(sub: argparse._SubParsersAction) -> None:
 
 
 # --------------------------------------------------------------------------- #
+# gui
+# --------------------------------------------------------------------------- #
+def _gui(args: argparse.Namespace) -> int:
+    try:
+        from .gui import main as gui_main  # lazy: keeps PySide6 optional
+    except ImportError as exc:
+        print(
+            f"error: the GUI needs PySide6 ({exc}). "
+            f"Install it with: pip install 'kicad-captouch[gui]'"
+        )
+        return 2
+    return gui_main([])
+
+
+def _add_gui_parser(sub: argparse._SubParsersAction) -> None:
+    p = sub.add_parser("gui", help="launch the live-preview desktop app")
+    p.set_defaults(func=_gui)
+
+
+# --------------------------------------------------------------------------- #
 # spike (Phase 0)
 # --------------------------------------------------------------------------- #
 def _spike(args: argparse.Namespace) -> int:
@@ -133,6 +154,7 @@ def main(argv: list[str] | None = None) -> int:
     )
     sub = parser.add_subparsers(dest="command", required=True)
     _add_slider_parser(sub)
+    _add_gui_parser(sub)
     _add_spike_parser(sub)
 
     args = parser.parse_args(argv)
