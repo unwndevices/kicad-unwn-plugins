@@ -98,12 +98,14 @@ class ParamPanel(PanelBase):
         # Ends & relief.
         self.end_dummies = self._spin(0, 2, 1)
         self.corner_radius = self._dspin(0.0, 10.0, 0.1)
+        self.tip_radius = self._dspin(0.0, 5.0, 0.05)
         self.relax = QCheckBox("Relax W + 2A = finger constraint")
         self.relax.toggled.connect(self._emit)
         end_box = QGroupBox("Ends && relief")
         ef = QFormLayout(end_box)
         ef.addRow("End dummies / side", self.end_dummies)
         ef.addRow("Corner radius", self.corner_radius)
+        ef.addRow("Tip radius (chevron)", self.tip_radius)
         ef.addRow(self.relax)
         root.addWidget(end_box)
 
@@ -135,6 +137,7 @@ class ParamPanel(PanelBase):
             tooth_depth=None if self.tooth_depth_auto.isChecked() else self.tooth_depth.value(),
             end_dummies=self.end_dummies.value(),
             corner_radius=self.corner_radius.value(),
+            tip_radius=self.tip_radius.value(),
             relax_finger_constraint=self.relax.isChecked(),
             name=self.name.text() or "CT_Slider",
         )
@@ -152,6 +155,7 @@ class ParamPanel(PanelBase):
             self.num_fingers.setValue(p.num_fingers)
             self.end_dummies.setValue(p.end_dummies)
             self.corner_radius.setValue(p.corner_radius)
+            self.tip_radius.setValue(p.tip_radius)
             self.relax.setChecked(p.relax_finger_constraint)
 
             # Optional fields: Auto reflects None; spin shows the resolved value.

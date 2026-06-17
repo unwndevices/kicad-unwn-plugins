@@ -48,6 +48,7 @@ def _params_from_args(args: argparse.Namespace) -> SliderParams:
         ("tooth_depth", "tooth_depth"),
         ("end_dummies", "end_dummies"),
         ("corner_radius", "corner_radius"),
+        ("tip_radius", "tip_radius"),
     ):
         value = getattr(args, flag)
         if value is not None:
@@ -107,7 +108,8 @@ def _add_slider_parser(sub: argparse._SubParsersAction) -> None:
     p.add_argument("--num-fingers", type=int, help="teeth per boundary (chevron/interdigitated)")
     p.add_argument("--tooth-depth", type=float, help="boundary half-amplitude (mm)")
     p.add_argument("--end-dummies", type=int, help="grounded dummy segments per end (0-2)")
-    p.add_argument("--corner-radius", type=float, help="ESD convex-corner rounding (mm)")
+    p.add_argument("--corner-radius", type=float, help="extra ESD convex-corner rounding (mm)")
+    p.add_argument("--tip-radius", type=float, help="chevron tooth-tip rounding (mm)")
     p.add_argument("--relax-finger-constraint", action="store_true",
                    help="skip the W+2A=finger check")
     p.set_defaults(func=_slider)
@@ -132,6 +134,7 @@ def _wheel_params_from_args(args: argparse.Namespace) -> WheelParams:
         ("num_fingers", "num_fingers"),
         ("tooth_depth", "tooth_depth"),
         ("corner_radius", "corner_radius"),
+        ("tip_radius", "tip_radius"),
         ("arc_resolution", "arc_resolution"),
     ):
         value = getattr(args, flag)
@@ -191,6 +194,7 @@ def _add_wheel_parser(sub: argparse._SubParsersAction) -> None:
     p.add_argument("--num-fingers", type=int, help="teeth per boundary (chevron/interdigitated)")
     p.add_argument("--tooth-depth", type=float, help="boundary half-amplitude (mm)")
     p.add_argument("--corner-radius", type=float, help="extra ESD convex-corner rounding (mm)")
+    p.add_argument("--tip-radius", type=float, help="chevron tooth-tip rounding (mm)")
     p.add_argument("--arc-resolution", type=int, help="circle tessellation: segments per 90deg")
     p.add_argument("--relax-finger-constraint", action="store_true",
                    help="skip the W+2A=finger check")

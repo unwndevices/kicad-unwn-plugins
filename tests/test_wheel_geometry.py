@@ -92,6 +92,17 @@ def test_numbering_walks_around_the_ring(shape):
     assert all(abs(d - step) < 0.15 for d in diffs), diffs
 
 
+def test_tip_radius_rounds_chevron_only():
+    sharp = build_wheel(_params("chevron", tip_radius=0.0))
+    rounded = build_wheel(_params("chevron", tip_radius=0.3))
+    assert [e.points for e in sharp.electrodes] != [e.points for e in rounded.electrodes]
+
+    # interdigitated has square (non-acute) tips → tip_radius is a no-op.
+    a = build_wheel(_params("interdigitated", tip_radius=0.0))
+    b = build_wheel(_params("interdigitated", tip_radius=0.3))
+    assert [e.points for e in a.electrodes] == [e.points for e in b.electrodes]
+
+
 def test_geometry_is_centred_on_origin():
     geo = build_wheel(_params("chevron"))
     minx, miny, maxx, maxy = geo.bounds

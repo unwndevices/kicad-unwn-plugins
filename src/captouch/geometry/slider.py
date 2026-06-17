@@ -35,6 +35,7 @@ from ._base import (
     Point,
     anchor_point,
     round_corners,
+    tip_relief_radius,
 )
 
 __all__ = ["Electrode", "SliderGeometry", "build_slider", "GeometryError", "ANCHOR_RADIUS"]
@@ -138,7 +139,10 @@ def build_slider(params: SliderParams) -> SliderGeometry:
         )
     parts.sort(key=lambda g: g.centroid.x)
 
-    parts = round_corners(parts, params.corner_radius)
+    # Round convex corners: chevron tips get at least tip_radius; other shapes
+    # use only corner_radius (see tip_relief_radius).
+    r_corner = tip_relief_radius(params.segment_shape, params.corner_radius, params.tip_radius)
+    parts = round_corners(parts, r_corner)
 
     naming = _role_and_naming(params)
     electrodes = [

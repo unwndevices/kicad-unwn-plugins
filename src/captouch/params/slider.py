@@ -68,7 +68,14 @@ class SliderParams:
         Grounded dummy segments per end (Infineon: lay out an n-segment slider
         as n+2 physical segments for uniform end sensitivity). ``0``..``2``.
     corner_radius:
-        Convex-corner rounding (mm) for ESD relief; ``0`` leaves sharp tips.
+        Extra convex-corner rounding (mm) applied to *all* shapes for ESD
+        relief; ``0`` (default) leaves the perimeter as built.
+    tip_radius:
+        Rounding (mm) applied specifically to **chevron** tooth-tips, which are
+        acute and otherwise taper to fab-resolution copper points (sharp copper
+        etches poorly and concentrates ESD). The effective chevron rounding is
+        ``max(corner_radius, tip_radius)``; ``0`` leaves sharp tips. Ignored for
+        rectangular / interdigitated boundaries (no acute tips).
     relax_finger_constraint:
         Skip the Eq. 73 check (for deliberately non-standard geometry).
     name:
@@ -85,6 +92,7 @@ class SliderParams:
     tooth_depth: float | None = None
     end_dummies: int = 1
     corner_radius: float = 0.0
+    tip_radius: float = 0.15
     relax_finger_constraint: bool = False
     name: str = "CT_Slider"
 
@@ -153,6 +161,8 @@ def validate_slider(p: SliderParams) -> SliderParams:
         raise SliderError(f"air_gap must be > 0, got {p.air_gap}")
     if p.corner_radius < 0:
         raise SliderError(f"corner_radius must be >= 0, got {p.corner_radius}")
+    if p.tip_radius < 0:
+        raise SliderError(f"tip_radius must be >= 0, got {p.tip_radius}")
 
     if p.segment_shape != "rectangular":
         if p.num_fingers < 1:

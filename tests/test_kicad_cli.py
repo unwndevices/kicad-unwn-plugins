@@ -121,3 +121,17 @@ def test_wheel_drc_clean(shape, tmp_path):
     report = _drc(board, tmp_path / "drc.json")
     assert report["violations"] == [], report["violations"]
     assert report["unconnected_items"] == []
+
+
+def test_wheel_sharp_chevron_tips_sliver(tmp_path):
+    # Negative control: with tip rounding disabled, a chevron wheel's acute tips
+    # taper to copper slivers — proving the default tip_radius relief (which
+    # makes test_wheel_drc_clean[chevron] pass) is doing real work.
+    geo = build_wheel(WheelParams(name="Sharp", segment_shape="chevron",
+                                  num_segments=5, ring_width=5.0, air_gap=0.5,
+                                  finger_diameter=8.0, tip_radius=0.0, corner_radius=0.0))
+    board = tmp_path / "sharp.kicad_pcb"
+    board.write_text(widget_board_text(geo))
+    report = _drc(board, tmp_path / "sharp.json")
+    slivers = [v for v in report["violations"] if v["type"] == "copper_sliver"]
+    assert slivers, "expected copper slivers for un-rounded chevron tips"

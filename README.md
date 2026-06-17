@@ -58,8 +58,12 @@ captouch slider --help                # full parameter list
 
 Key parameters: `--shape {rectangular,chevron,interdigitated}`, `--num-segments`,
 `--segment-width`/`--segment-height`, `--air-gap`, `--finger-diameter`, `--num-fingers`,
-`--tooth-depth`, `--end-dummies`, `--corner-radius`. Segment width is derived from the finger
-diameter unless given; `--relax-finger-constraint` waives the `W + 2A` check.
+`--tooth-depth`, `--end-dummies`, `--corner-radius`, `--tip-radius`. Segment width is derived from
+the finger diameter unless given; `--relax-finger-constraint` waives the `W + 2A` check.
+
+Chevron tooth-tips are acute and would otherwise etch to fab-resolution copper points, so they are
+rounded for ESD relief by `--tip-radius` (default 0.15 mm, chevron-only); `--corner-radius` adds
+extra rounding to every shape. Set `--tip-radius 0` to keep sharp tips.
 
 ### Generate a wheel
 
@@ -75,8 +79,9 @@ captouch wheel --help                 # full parameter list
 ```
 
 Wheel-specific parameters: `--ring-width` (radial width), `--arc-resolution` (circle tessellation,
-segments per 90°). The outer diameter and centre-hole diameter are **derived** from the pitch and
-ring width and printed on generation. Wheels are continuous, so there are no end dummies.
+segments per 90°); it also takes `--corner-radius` / `--tip-radius` like the slider. The outer
+diameter and centre-hole diameter are **derived** from the pitch and ring width and printed on
+generation. Wheels are continuous, so there are no end dummies.
 
 ### Tests
 

@@ -79,6 +79,25 @@ def test_interdigitation_interleaves_neighbours(shape):
         assert a[2] > b[0]  # left electrode's max-x exceeds right electrode's min-x
 
 
+def test_tip_radius_rounds_chevron_only():
+    # Chevron tips change when rounded; rectangular has no acute tips so its
+    # tip_radius is a no-op (only corner_radius would touch it).
+    sharp = build_slider(SliderParams(segment_shape="chevron", tip_radius=0.0))
+    rounded = build_slider(SliderParams(segment_shape="chevron", tip_radius=0.3))
+    assert [e.points for e in sharp.electrodes] != [e.points for e in rounded.electrodes]
+
+    a = build_slider(SliderParams(segment_shape="rectangular", segment_width=7.0, tip_radius=0.0))
+    b = build_slider(SliderParams(segment_shape="rectangular", segment_width=7.0, tip_radius=0.3))
+    assert [e.points for e in a.electrodes] == [e.points for e in b.electrodes]
+
+
+def test_excessive_tip_radius_degrades_gracefully():
+    # round_corners must never raise: a far-too-large radius leaves valid copper.
+    geo = build_slider(SliderParams(segment_shape="chevron", tip_radius=5.0))
+    for e in geo.electrodes:
+        assert e.polygon.is_valid and e.polygon.area > 0
+
+
 def test_rectangular_segments_have_expected_width():
     geo = build_slider(SliderParams(segment_shape="rectangular", num_segments=3, end_dummies=0))
     for e in geo.electrodes:

@@ -90,12 +90,14 @@ class WheelPanel(PanelBase):
 
         # Relief & rendering.
         self.corner_radius = self._dspin(0.0, 10.0, 0.1)
+        self.tip_radius = self._dspin(0.0, 5.0, 0.05)
         self.arc_resolution = self._spin(2, 64, 1)
         self.relax = QCheckBox("Relax W + 2A = finger constraint")
         self.relax.toggled.connect(self._emit)
         misc_box = QGroupBox("Relief && rendering")
         mf = QFormLayout(misc_box)
         mf.addRow("Corner radius", self.corner_radius)
+        mf.addRow("Tip radius (chevron)", self.tip_radius)
         mf.addRow("Arc resolution", self.arc_resolution)
         mf.addRow(self.relax)
         root.addWidget(misc_box)
@@ -127,6 +129,7 @@ class WheelPanel(PanelBase):
             num_fingers=self.num_fingers.value(),
             tooth_depth=None if self.tooth_depth_auto.isChecked() else self.tooth_depth.value(),
             corner_radius=self.corner_radius.value(),
+            tip_radius=self.tip_radius.value(),
             arc_resolution=self.arc_resolution.value(),
             relax_finger_constraint=self.relax.isChecked(),
             name=self.name.text() or "CT_Wheel",
@@ -144,6 +147,7 @@ class WheelPanel(PanelBase):
             self.finger_diameter.setValue(p.finger_diameter)
             self.num_fingers.setValue(p.num_fingers)
             self.corner_radius.setValue(p.corner_radius)
+            self.tip_radius.setValue(p.tip_radius)
             self.arc_resolution.setValue(p.arc_resolution)
             self.relax.setChecked(p.relax_finger_constraint)
 

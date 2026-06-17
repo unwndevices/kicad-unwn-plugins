@@ -67,11 +67,15 @@ class WheelParams:
         Half-amplitude (mm) of the boundary waveform at the mean radius. ``None``
         derives ``0.3 * W``. Must stay below ``W / 2``.
     corner_radius:
-        Extra convex-corner rounding (mm) for ESD relief; ``0`` (default) leaves
-        corners as built. Note: chevron wheels additionally get an automatic
-        minimum tip relief during the build (a wheel's short ring makes chevron
-        tooth-tips acute, and sharp copper points etch poorly — KiCad DRC flags
-        them as copper slivers), so a chevron wheel is DRC-clean even at ``0``.
+        Extra convex-corner rounding (mm) applied to *all* shapes for ESD
+        relief; ``0`` (default) leaves corners as built.
+    tip_radius:
+        Rounding (mm) applied specifically to **chevron** tooth-tips. A wheel's
+        short ring makes chevron tips acute, and sharp copper points etch poorly
+        (KiCad DRC flags them as copper slivers); rounding the tips fixes both.
+        The effective chevron rounding is ``max(corner_radius, tip_radius)``, so
+        a chevron wheel is DRC-clean even at ``corner_radius == 0``. Set to ``0``
+        to leave sharp tips. Ignored for rectangular / interdigitated boundaries.
     arc_resolution:
         Circle tessellation quality: polyline segments per 90° of arc (KiCad
         custom-pad polygons cannot hold true arcs, so circles are approximated).
@@ -90,6 +94,7 @@ class WheelParams:
     num_fingers: int = 3
     tooth_depth: float | None = None
     corner_radius: float = 0.0
+    tip_radius: float = 0.15
     arc_resolution: int = 16
     relax_finger_constraint: bool = False
     name: str = "CT_Wheel"
@@ -179,6 +184,8 @@ def validate_wheel(p: WheelParams) -> WheelParams:
         raise WheelError(f"air_gap must be > 0, got {p.air_gap}")
     if p.corner_radius < 0:
         raise WheelError(f"corner_radius must be >= 0, got {p.corner_radius}")
+    if p.tip_radius < 0:
+        raise WheelError(f"tip_radius must be >= 0, got {p.tip_radius}")
     if p.arc_resolution < 2:
         raise WheelError(f"arc_resolution must be >= 2, got {p.arc_resolution}")
 

@@ -48,6 +48,12 @@ def test_arc_per_segment():
     assert WheelParams(num_segments=8).arc_per_segment_deg == pytest.approx(45.0)
 
 
+def test_tip_radius_default_and_validation():
+    assert WheelParams().tip_radius == 0.15
+    with pytest.raises(WheelError, match="tip_radius"):
+        validate_wheel(WheelParams(tip_radius=-0.1))
+
+
 @pytest.mark.parametrize("key", sorted(WHEEL_PRESETS))
 def test_presets_validate(key):
     validate_wheel(WHEEL_PRESETS[key])  # must not raise

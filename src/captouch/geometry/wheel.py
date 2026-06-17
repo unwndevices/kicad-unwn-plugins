@@ -39,17 +39,10 @@ from ._base import (
     GeometryError,
     anchor_point,
     round_corners,
+    tip_relief_radius,
 )
 
 __all__ = ["WheelGeometry", "build_wheel"]
-
-# Minimum convex rounding applied to chevron tooth-tips regardless of the user's
-# corner_radius. A wheel's short ring makes triangle-wave tips acute enough to
-# taper to sub-fab-resolution copper slivers (KiCad DRC flags these); ~0.1 mm of
-# tip relief removes them. Square (interdigitated) and straight (rectangular)
-# boundaries have no acute tips and are left untouched. (The slider does not need
-# this at its default proportions, so it keeps sharp tips.)
-_CHEVRON_TIP_RELIEF = 0.12
 
 
 @dataclass(frozen=True)
@@ -142,11 +135,9 @@ def build_wheel(params: WheelParams) -> WheelGeometry:
 
     parts.sort(key=seg_index)
 
-    # Chevron tips are acute on a short ring; blunt them to stay DRC-clean even
-    # when the user leaves corner_radius at 0 (see _CHEVRON_TIP_RELIEF).
-    r_corner = params.corner_radius
-    if params.segment_shape == "chevron":
-        r_corner = max(r_corner, _CHEVRON_TIP_RELIEF)
+    # Round convex corners: chevron tips get at least tip_radius (acute on a
+    # short ring, else they sliver); other shapes use only corner_radius.
+    r_corner = tip_relief_radius(params.segment_shape, params.corner_radius, params.tip_radius)
     parts = round_corners(parts, r_corner)
 
     electrodes = [

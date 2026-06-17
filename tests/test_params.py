@@ -54,6 +54,12 @@ def test_out_of_range_values_rejected(bad):
         validate_slider(SliderParams(**bad))
 
 
+def test_tip_radius_default_and_validation():
+    assert SliderParams().tip_radius == 0.15
+    with pytest.raises(SliderError, match="tip_radius"):
+        validate_slider(SliderParams(tip_radius=-0.1))
+
+
 @pytest.mark.parametrize("name", sorted(SLIDER_PRESETS))
 def test_presets_are_valid(name):
     validate_slider(SLIDER_PRESETS[name])

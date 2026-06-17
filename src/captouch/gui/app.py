@@ -31,6 +31,7 @@ from PySide6.QtWidgets import (
 
 from ..export import footprint, symbol
 from ..geometry import WheelGeometry
+from ..geometry._base import GeometryError
 from ..params import SliderError
 from .panel import ParamPanel
 from .preview import LAYERS, PreviewView, WidgetGeometry
@@ -163,7 +164,7 @@ class MainWindow(QMainWindow):
         """Rebuild geometry from the active panel; render or report the error."""
         try:
             geo = self.panel.build_geometry()  # WheelError subclasses SliderError
-        except SliderError as exc:
+        except (SliderError, GeometryError) as exc:
             self._status.setStyleSheet(_ERR_STYLE)
             self._status.setText(f"⚠ {exc}")
             self._export_btn.setEnabled(self._geo is not None)
