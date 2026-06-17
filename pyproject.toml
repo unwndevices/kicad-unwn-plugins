@@ -18,7 +18,7 @@ dependencies = ["shapely>=2.0"]
 dev = ["pytest>=7"]
 
 [project.scripts]
-captouch-spike = "captouch.cli:main"
+captouch = "captouch.cli:main"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/captouch"]
