@@ -10,7 +10,6 @@ from __future__ import annotations
 
 from captouch import sexpr
 from captouch.export import footprint
-from captouch.geometry import SliderGeometry
 from captouch.sexpr import Sym
 
 # Canonical KiCad layer table (the subset a board must declare).
@@ -60,7 +59,7 @@ def _embed(fp_node: list, at: tuple[float, float]) -> list:
     ]
 
 
-def _edge_cuts(geo: SliderGeometry, at: tuple[float, float], margin: float) -> list:
+def _edge_cuts(geo, at: tuple[float, float], margin: float) -> list:
     minx, miny, maxx, maxy = geo.bounds
     x0, y0 = at[0] + minx - margin, at[1] + miny - margin
     x1, y1 = at[0] + maxx + margin, at[1] + maxy + margin
@@ -74,11 +73,11 @@ def _edge_cuts(geo: SliderGeometry, at: tuple[float, float], margin: float) -> l
     ]
 
 
-def slider_board_text(
-    geo: SliderGeometry, *, at: tuple[float, float] = (100.0, 100.0), margin: float = 8.0
+def widget_board_text(
+    geo, *, at: tuple[float, float] = (100.0, 100.0), margin: float = 8.0
 ) -> str:
-    """Serialise a minimal board with the slider placed and a board outline."""
-    fp = _embed(footprint.slider_footprint(geo), at)
+    """Serialise a minimal board with the widget placed and a board outline."""
+    fp = _embed(footprint.widget_footprint(geo), at)
     board = [
         Sym("kicad_pcb"),
         [Sym("version"), footprint.FOOTPRINT_VERSION],
@@ -93,3 +92,7 @@ def slider_board_text(
         fp,
     ]
     return sexpr.dumps(board) + "\n"
+
+
+# Back-compat alias: the slider tests call this name.
+slider_board_text = widget_board_text

@@ -9,9 +9,13 @@ KiCad 9.0 symbol-library format (``version 20241209``).
 
 from __future__ import annotations
 
+from typing import Union
+
 from .. import __version__, sexpr
-from ..geometry import SliderGeometry
+from ..geometry import SliderGeometry, WheelGeometry
 from ..sexpr import Sym
+
+WidgetGeometry = Union[SliderGeometry, WheelGeometry]
 
 # KiCad 9.0 .kicad_sym S-expression format version (date token).
 SYMBOL_LIB_VERSION = 20241209
@@ -160,20 +164,52 @@ def symbol_lib_text(name: str) -> str:
 
 
 # --------------------------------------------------------------------------- #
-# Slider: one pin per electrode pad
+# Widget symbol: one pin per electrode pad
 # --------------------------------------------------------------------------- #
-def slider_symbol(geo: SliderGeometry) -> list:
-    """Build a multi-pin slider symbol; pin numbers match footprint pad numbers."""
-    left = [(e.pad_number, e.pin_name) for e in geo.active]
-    right = [(e.pad_number, e.pin_name) for e in geo.dummies]
+def widget_symbol(geo: WidgetGeometry) -> list:
+    """Build a multi-pin symbol for any widget; pin numbers match pad numbers.
+
+    The geometry chooses the two pin columns via ``symbol_columns`` (slider:
+    active left / GND right; wheel: the ring's electrodes split into halves).
+    """
+    left, right = geo.symbol_columns()
     return _symbol_node(geo.params.name, left, right)
 
 
+def widget_symbol_lib(geo: WidgetGeometry) -> list:
+    """Build a symbol-library node containing the widget symbol."""
+    return _lib(widget_symbol(geo))
+
+
+def widget_symbol_lib_text(geo: WidgetGeometry) -> str:
+    """Serialise a widget symbol library to `.kicad_sym` text (trailing newline)."""
+    return sexpr.dumps(widget_symbol_lib(geo)) + "\n"
+
+
+# Backwards-compatible / explicit per-widget aliases.
+def slider_symbol(geo: SliderGeometry) -> list:
+    """Build a slider symbol (see :func:`widget_symbol`)."""
+    return widget_symbol(geo)
+
+
 def slider_symbol_lib(geo: SliderGeometry) -> list:
-    """Build a symbol-library node containing the slider symbol."""
-    return _lib(slider_symbol(geo))
+    return _lib(widget_symbol(geo))
 
 
 def slider_symbol_lib_text(geo: SliderGeometry) -> str:
     """Serialise a slider symbol library to `.kicad_sym` text (trailing newline)."""
-    return sexpr.dumps(slider_symbol_lib(geo)) + "\n"
+    return widget_symbol_lib_text(geo)
+
+
+def wheel_symbol(geo: WheelGeometry) -> list:
+    """Build a wheel symbol (see :func:`widget_symbol`)."""
+    return widget_symbol(geo)
+
+
+def wheel_symbol_lib(geo: WheelGeometry) -> list:
+    return _lib(widget_symbol(geo))
+
+
+def wheel_symbol_lib_text(geo: WheelGeometry) -> str:
+    """Serialise a wheel symbol library to `.kicad_sym` text (trailing newline)."""
+    return widget_symbol_lib_text(geo)

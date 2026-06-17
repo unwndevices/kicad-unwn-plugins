@@ -1,6 +1,7 @@
 """Command-line frontend over the same engine the GUI uses.
 
 ``captouch slider``  generates a slider footprint + symbol from flags/presets.
+``captouch wheel``   generates a wheel (rotary slider) footprint + symbol.
 ``captouch gui``     launches the PySide6 live-preview app (needs the gui extra).
 ``captouch spike``   emits the Phase-0 format-spike pair (kept as a smoke test).
 """
@@ -12,8 +13,14 @@ from dataclasses import replace
 from pathlib import Path
 
 from .export import footprint, symbol
-from .geometry import build_slider
-from .params import SLIDER_PRESETS, SliderError, SliderParams
+from .geometry import build_slider, build_wheel
+from .params import (
+    SLIDER_PRESETS,
+    WHEEL_PRESETS,
+    SliderError,
+    SliderParams,
+    WheelParams,
+)
 
 SPIKE_NAME = "CT_Spike_Pad"
 
@@ -107,6 +114,90 @@ def _add_slider_parser(sub: argparse._SubParsersAction) -> None:
 
 
 # --------------------------------------------------------------------------- #
+# wheel
+# --------------------------------------------------------------------------- #
+def _wheel_params_from_args(args: argparse.Namespace) -> WheelParams:
+    """Start from a preset (or defaults) and apply only explicitly-set flags."""
+    base = WHEEL_PRESETS[args.preset] if args.preset else WheelParams()
+
+    overrides: dict[str, object] = {}
+    for flag, field in (
+        ("name", "name"),
+        ("shape", "segment_shape"),
+        ("num_segments", "num_segments"),
+        ("segment_width", "segment_width"),
+        ("ring_width", "ring_width"),
+        ("air_gap", "air_gap"),
+        ("finger_diameter", "finger_diameter"),
+        ("num_fingers", "num_fingers"),
+        ("tooth_depth", "tooth_depth"),
+        ("corner_radius", "corner_radius"),
+        ("arc_resolution", "arc_resolution"),
+    ):
+        value = getattr(args, flag)
+        if value is not None:
+            overrides[field] = value
+    if args.relax_finger_constraint:
+        overrides["relax_finger_constraint"] = True
+
+    return replace(base, **overrides)
+
+
+def _wheel(args: argparse.Namespace) -> int:
+    if args.list_presets:
+        for key, p in WHEEL_PRESETS.items():
+            print(f"{key:10} {p.name}  ({p.num_segments} seg, {p.segment_shape})")
+        return 0
+
+    try:
+        params = _wheel_params_from_args(args)
+        geo = build_wheel(params)
+    except SliderError as exc:  # WheelError subclasses SliderError
+        print(f"error: {exc}")
+        return 2
+
+    args.out.mkdir(parents=True, exist_ok=True)
+    fp_path = args.out / f"{params.name}.kicad_mod"
+    sym_path = args.out / f"{params.name}.kicad_sym"
+    fp_path.write_text(footprint.wheel_footprint_text(geo), encoding="utf-8")
+    sym_path.write_text(symbol.wheel_symbol_lib_text(geo), encoding="utf-8")
+
+    print(f"wrote {fp_path}")
+    print(f"wrote {sym_path}")
+    print(
+        f"  {params.segment_shape} wheel: {len(geo.electrodes)} electrodes, "
+        f"W={params.width:.2f} A={params.air_gap:.2f} ring={params.ring_width:.2f} mm, "
+        f"OD={params.outer_diameter:.2f} mm, centre hole "
+        f"{params.center_hole_diameter:.2f} mm"
+    )
+    return 0
+
+
+def _add_wheel_parser(sub: argparse._SubParsersAction) -> None:
+    p = sub.add_parser("wheel", help="generate a rotary wheel footprint + symbol")
+    p.add_argument("-o", "--out", type=Path, default=Path("examples"),
+                   help="output directory (default: ./examples)")
+    p.add_argument("--list-presets", action="store_true", help="list presets and exit")
+    p.add_argument("--preset", choices=sorted(WHEEL_PRESETS), help="start from a vendor preset")
+    p.add_argument("--name", help="footprint/symbol base name")
+    p.add_argument("--shape", dest="shape",
+                   choices=("rectangular", "chevron", "interdigitated"),
+                   help="electrode boundary style")
+    p.add_argument("--num-segments", type=int, help="electrode count around the ring (>=3)")
+    p.add_argument("--segment-width", type=float, help="arc width W at mean radius (mm; derived if unset)")
+    p.add_argument("--ring-width", type=float, help="radial ring width (mm)")
+    p.add_argument("--air-gap", type=float, help="inter-electrode gap A (mm)")
+    p.add_argument("--finger-diameter", type=float, help="finger contact diameter (mm)")
+    p.add_argument("--num-fingers", type=int, help="teeth per boundary (chevron/interdigitated)")
+    p.add_argument("--tooth-depth", type=float, help="boundary half-amplitude (mm)")
+    p.add_argument("--corner-radius", type=float, help="extra ESD convex-corner rounding (mm)")
+    p.add_argument("--arc-resolution", type=int, help="circle tessellation: segments per 90deg")
+    p.add_argument("--relax-finger-constraint", action="store_true",
+                   help="skip the W+2A=finger check")
+    p.set_defaults(func=_wheel)
+
+
+# --------------------------------------------------------------------------- #
 # gui
 # --------------------------------------------------------------------------- #
 def _gui(args: argparse.Namespace) -> int:
@@ -154,6 +245,7 @@ def main(argv: list[str] | None = None) -> int:
     )
     sub = parser.add_subparsers(dest="command", required=True)
     _add_slider_parser(sub)
+    _add_wheel_parser(sub)
     _add_gui_parser(sub)
     _add_spike_parser(sub)
 

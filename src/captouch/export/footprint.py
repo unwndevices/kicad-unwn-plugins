@@ -15,10 +15,16 @@ from __future__ import annotations
 
 from typing import Sequence
 
+from typing import Union
+
 from .. import __version__, sexpr
-from ..geometry import SliderGeometry
-from ..geometry.slider import ANCHOR_RADIUS
+from ..geometry import SliderGeometry, WheelGeometry
+from ..geometry._base import ANCHOR_RADIUS
 from ..sexpr import Sym
+
+#: Any widget geometry the exporter can serialise (duck-typed: ``electrodes``,
+#: ``bounds``, ``params.name``, ``fab_primitives``, ``courtyard_outline``).
+WidgetGeometry = Union[SliderGeometry, WheelGeometry]
 
 # KiCad 9.0 footprint/board S-expression format version (date token). KiCad 10
 # reads and upgrades it; emitting a newer token would make KiCad 9 reject it.
@@ -65,6 +71,42 @@ def _fp_rect(p1: Point, p2: Point, *, layer: str, width: float) -> list:
         [Sym("fill"), Sym("no")],
         [Sym("layer"), layer],
     ]
+
+
+def _fp_circle(center: Point, radius: float, *, layer: str, width: float) -> list:
+    cx, cy = center
+    return [
+        Sym("fp_circle"),
+        [Sym("center"), cx, cy],
+        [Sym("end"), round(cx + radius, 6), cy],  # a point on the circle
+        [Sym("stroke"), [Sym("width"), width], [Sym("type"), Sym("default")]],
+        [Sym("fill"), Sym("no")],
+        [Sym("layer"), layer],
+    ]
+
+
+def _expand_outline(prim: tuple, margin: float) -> tuple:
+    """Grow a documentation primitive outward by *margin* (for the courtyard)."""
+    kind = prim[0]
+    if kind == "rect":
+        _, x1, y1, x2, y2 = prim
+        return ("rect", x1 - margin, y1 - margin, x2 + margin, y2 + margin)
+    if kind == "circle":
+        _, cx, cy, r = prim
+        return ("circle", cx, cy, r + margin)
+    raise ValueError(f"unknown outline primitive: {prim!r}")
+
+
+def _emit_outline(prim: tuple, *, layer: str, width: float) -> list:
+    """Render a ``("rect", …)`` / ``("circle", …)`` primitive on *layer*."""
+    kind = prim[0]
+    if kind == "rect":
+        _, x1, y1, x2, y2 = prim
+        return _fp_rect((x1, y1), (x2, y2), layer=layer, width=width)
+    if kind == "circle":
+        _, cx, cy, r = prim
+        return _fp_circle((cx, cy), r, layer=layer, width=width)
+    raise ValueError(f"unknown outline primitive: {prim!r}")
 
 
 def custom_polygon_pad(
@@ -132,37 +174,64 @@ def footprint_text(name: str, polygon: Sequence[Point], *, value: str | None = N
 
 
 # --------------------------------------------------------------------------- #
-# Slider: one custom pad per electrode + courtyard + fab outline
+# Widget footprint: one custom pad per electrode + courtyard + fab outline
 # --------------------------------------------------------------------------- #
-def slider_footprint(geo: SliderGeometry) -> list:
-    """Build a footprint node for a slider from its geometry."""
+def widget_footprint(geo: WidgetGeometry) -> list:
+    """Build a footprint node for any widget (slider, wheel, …) from its geometry.
+
+    The documentation outline (``F.Fab``) and courtyard (``F.CrtYd``) come from
+    the geometry's own ``fab_primitives`` / ``courtyard_outline`` (rectangles for
+    a slider, circles for a wheel), so each widget draws the right shape while the
+    pad/courtyard machinery stays shared.
+    """
     name = geo.params.name
     minx, miny, maxx, maxy = geo.bounds
     ref_y = miny - 1.5
     val_y = maxy + 1.5
 
+    fab = [_emit_outline(p, layer="F.Fab", width=FAB_WIDTH) for p in geo.fab_primitives]
+    courtyard = _emit_outline(
+        _expand_outline(geo.courtyard_outline, COURTYARD_MARGIN),
+        layer="F.CrtYd",
+        width=COURTYARD_WIDTH,
+    )
     pads = [
         custom_polygon_pad(e.points, number=e.pad_number, at=e.anchor)
         for e in geo.electrodes
     ]
 
-    m = COURTYARD_MARGIN
-    courtyard = _fp_rect(
-        (minx - m, miny - m), (maxx + m, maxy + m), layer="F.CrtYd", width=COURTYARD_WIDTH
-    )
-    fab = _fp_rect((minx, miny), (maxx, maxy), layer="F.Fab", width=FAB_WIDTH)
-
     return [
         Sym("footprint"),
         name,
         *_header(name, name, ref_y, val_y),
-        fab,
+        *fab,
         courtyard,
         *pads,
         [Sym("embedded_fonts"), Sym("no")],
     ]
 
 
+def widget_footprint_text(geo: WidgetGeometry) -> str:
+    """Serialise any widget footprint to `.kicad_mod` text (trailing newline)."""
+    return sexpr.dumps(widget_footprint(geo)) + "\n"
+
+
+# Backwards-compatible / explicit per-widget aliases.
+def slider_footprint(geo: SliderGeometry) -> list:
+    """Build a slider footprint node (see :func:`widget_footprint`)."""
+    return widget_footprint(geo)
+
+
 def slider_footprint_text(geo: SliderGeometry) -> str:
     """Serialise a slider footprint to `.kicad_mod` text (trailing newline)."""
-    return sexpr.dumps(slider_footprint(geo)) + "\n"
+    return widget_footprint_text(geo)
+
+
+def wheel_footprint(geo: WheelGeometry) -> list:
+    """Build a wheel footprint node (see :func:`widget_footprint`)."""
+    return widget_footprint(geo)
+
+
+def wheel_footprint_text(geo: WheelGeometry) -> str:
+    """Serialise a wheel footprint to `.kicad_mod` text (trailing newline)."""
+    return widget_footprint_text(geo)

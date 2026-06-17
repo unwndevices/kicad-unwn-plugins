@@ -20,58 +20,24 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from shapely.geometry import LineString, MultiPolygon, Polygon, box
+from shapely.geometry import LineString, MultiPolygon, box
 from shapely.ops import unary_union
 
 from ..params import SliderParams, validate_slider
 from . import waveform
+from ._base import (
+    ANCHOR_RADIUS,
+    ARC_QUAD_SEGS,
+    ROUND,
+    SHAPE_TO_KIND,
+    Electrode,
+    GeometryError,
+    Point,
+    anchor_point,
+    round_corners,
+)
 
-__all__ = ["Electrode", "SliderGeometry", "build_slider"]
-
-Point = tuple[float, float]
-
-# Maps the user-facing shape name to the waveform kind.
-_SHAPE_TO_KIND = {
-    "rectangular": "rectangular",
-    "chevron": "triangle",
-    "interdigitated": "square",
-}
-
-# Quarter-circle segments for the gap-strip round joins (and ESD rounding).
-# 2 keeps emitted pads lean (~20-50 pts) while still rounding gap corners;
-# finer than the fab can resolve at a 0.25 mm fillet anyway.
-_ARC_QUAD_SEGS = 2
-
-# Coordinate rounding (mm). 1e-4 mm = 0.1 um, far below fab resolution; keeps
-# emitted coordinates and golden files stable.
-_ROUND = 4
-
-# Anchor circle radius (mm) for the custom pads (see exporter). The interior
-# point each electrode exposes must comfortably contain this.
-ANCHOR_RADIUS = 0.25
-
-
-class GeometryError(ValueError):
-    """Raised when slider geometry cannot be built as expected."""
-
-
-@dataclass(frozen=True)
-class Electrode:
-    """One physical slider segment and how it maps to a pad / symbol pin."""
-
-    polygon: Polygon
-    pad_number: str
-    pin_name: str
-    role: str  # "active" | "dummy"
-    anchor: Point  # interior point for the custom-pad anchor
-
-    @property
-    def points(self) -> list[Point]:
-        """Exterior ring as ``(x, y)`` vertices, no duplicate closing point."""
-        coords = list(self.polygon.exterior.coords)
-        if coords and coords[0] == coords[-1]:
-            coords = coords[:-1]
-        return [(round(x, _ROUND), round(y, _ROUND)) for x, y in coords]
+__all__ = ["Electrode", "SliderGeometry", "build_slider", "GeometryError", "ANCHOR_RADIUS"]
 
 
 @dataclass(frozen=True)
@@ -90,13 +56,24 @@ class SliderGeometry:
     def dummies(self) -> list[Electrode]:
         return [e for e in self.electrodes if e.role == "dummy"]
 
+    # -- documentation outline (shared exporter / preview, see export module) - #
+    @property
+    def fab_primitives(self) -> list[tuple]:
+        """F.Fab documentation shapes: the bounding rectangle."""
+        minx, miny, maxx, maxy = self.bounds
+        return [("rect", minx, miny, maxx, maxy)]
 
-def _anchor_point(poly: Polygon) -> Point:
-    """An interior point comfortably containing the anchor circle."""
-    inner = poly.buffer(-ANCHOR_RADIUS, quad_segs=_ARC_QUAD_SEGS)
-    src = poly if inner.is_empty else inner
-    p = src.representative_point()
-    return (round(p.x, _ROUND), round(p.y, _ROUND))
+    @property
+    def courtyard_outline(self) -> tuple:
+        """Bounding shape the exporter expands by the courtyard margin."""
+        minx, miny, maxx, maxy = self.bounds
+        return ("rect", minx, miny, maxx, maxy)
+
+    def symbol_columns(self) -> tuple[list[tuple[str, str]], list[tuple[str, str]]]:
+        """``(left, right)`` pin ``(number, name)`` lists: active left, GND right."""
+        left = [(e.pad_number, e.pin_name) for e in self.active]
+        right = [(e.pad_number, e.pin_name) for e in self.dummies]
+        return left, right
 
 
 def _role_and_naming(params: SliderParams) -> list[tuple[str, str, str]]:
@@ -132,7 +109,7 @@ def build_slider(params: SliderParams) -> SliderGeometry:
     h = params.segment_height
     m = params.num_physical_segments
     amp = params.amplitude
-    kind = _SHAPE_TO_KIND[params.segment_shape]
+    kind = SHAPE_TO_KIND[params.segment_shape]
 
     total = params.total_length
     x_off = -total / 2.0  # centre the slider on the origin
@@ -147,7 +124,7 @@ def build_slider(params: SliderParams) -> SliderGeometry:
             x_nom, amp, params.num_fingers, -h / 2.0 - ext, h / 2.0 + ext, kind
         )
         strip = LineString(pts).buffer(
-            a / 2.0, cap_style="flat", join_style="round", quad_segs=_ARC_QUAD_SEGS
+            a / 2.0, cap_style="flat", join_style="round", quad_segs=ARC_QUAD_SEGS
         )
         strips.append(strip)
 
@@ -161,19 +138,7 @@ def build_slider(params: SliderParams) -> SliderGeometry:
         )
     parts.sort(key=lambda g: g.centroid.x)
 
-    # Optional ESD relief: round convex (outer) corners via a morphological open.
-    r = params.corner_radius
-    if r > 0:
-        rounded = []
-        for g in parts:
-            g2 = g.buffer(-r, quad_segs=_ARC_QUAD_SEGS).buffer(r, quad_segs=_ARC_QUAD_SEGS)
-            if g2.is_empty or g2.geom_type != "Polygon":
-                raise GeometryError(
-                    f"corner_radius {r} mm erased a segment; reduce it below the "
-                    f"thinnest copper feature"
-                )
-            rounded.append(g2)
-        parts = rounded
+    parts = round_corners(parts, params.corner_radius)
 
     naming = _role_and_naming(params)
     electrodes = [
@@ -182,12 +147,12 @@ def build_slider(params: SliderParams) -> SliderGeometry:
             pad_number=num,
             pin_name=name,
             role=role,
-            anchor=_anchor_point(poly),
+            anchor=anchor_point(poly),
         )
         for poly, (role, num, name) in zip(parts, naming)
     ]
 
     union = unary_union(parts)
     minx, miny, maxx, maxy = union.bounds
-    bounds = (round(minx, _ROUND), round(miny, _ROUND), round(maxx, _ROUND), round(maxy, _ROUND))
+    bounds = (round(minx, ROUND), round(miny, ROUND), round(maxx, ROUND), round(maxy, ROUND))
     return SliderGeometry(electrodes=electrodes, bounds=bounds, params=params)

@@ -14,8 +14,8 @@ from __future__ import annotations
 import pytest
 
 from captouch.export import footprint, symbol
-from captouch.geometry import build_slider
-from captouch.params import SLIDER_PRESETS, SliderParams
+from captouch.geometry import WheelGeometry, build_slider
+from captouch.params import SLIDER_PRESETS, WHEEL_PRESETS, SliderParams
 
 pytestmark = pytest.mark.usefixtures("qapp")
 
@@ -165,3 +165,51 @@ def test_export_without_geometry_raises(qapp, tmp_path):
     win._geo = None
     with pytest.raises(RuntimeError):
         win.export_to(tmp_path)
+
+
+# --------------------------------------------------------------------------- #
+# widget switcher — wheel
+# --------------------------------------------------------------------------- #
+def test_default_widget_is_slider(qapp):
+    from captouch.gui.app import MainWindow
+    from captouch.gui.panel import ParamPanel
+
+    win = MainWindow()
+    assert isinstance(win.panel, ParamPanel)
+
+
+def test_switch_to_wheel_builds_wheel_geometry(qapp):
+    from captouch.gui.app import MainWindow
+    from captouch.gui.wheel_panel import WheelPanel
+
+    win = MainWindow()
+    win._on_widget_changed(1)  # 0 = Slider, 1 = Wheel
+    assert isinstance(win.panel, WheelPanel)
+    assert isinstance(win.preview.geometry_model, WheelGeometry)
+
+
+def test_wheel_preview_matches_geometry(qapp):
+    from captouch.gui.app import MainWindow
+
+    win = MainWindow()
+    win._on_widget_changed(1)
+    win.panel.set_params(WHEEL_PRESETS["infineon"])
+    win._rebuild()
+    geo = win.preview.geometry_model
+    for e in geo.electrodes:
+        assert win.preview.electrode_polygon_points(e.pad_number) == e.points
+
+
+def test_wheel_export_matches_preview(qapp, tmp_path):
+    from captouch.gui.app import MainWindow
+
+    win = MainWindow()
+    win._on_widget_changed(1)
+    win.panel.set_params(WHEEL_PRESETS["microchip"])
+    win._rebuild()
+    geo = win.preview.geometry_model
+
+    fp_path, sym_path = win.export_to(tmp_path)
+    assert fp_path.read_text() == footprint.widget_footprint_text(geo)
+    assert sym_path.read_text() == symbol.widget_symbol_lib_text(geo)
+    assert fp_path.read_text().count("(pad ") == len(geo.electrodes)

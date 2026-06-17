@@ -10,6 +10,14 @@ exported copper.
 
 from __future__ import annotations
 
-from .slider import Electrode, SliderGeometry, build_slider
+from ._base import Electrode
+from .slider import SliderGeometry, build_slider
+from .wheel import WheelGeometry, build_wheel
 
-__all__ = ["build_slider", "SliderGeometry", "Electrode"]
+__all__ = [
+    "build_slider",
+    "SliderGeometry",
+    "build_wheel",
+    "WheelGeometry",
+    "Electrode",
+]

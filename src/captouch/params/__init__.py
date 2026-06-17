@@ -16,10 +16,20 @@ from .slider import (
     SliderParams,
     validate_slider,
 )
+from .wheel import (
+    WHEEL_PRESETS,
+    WheelError,
+    WheelParams,
+    validate_wheel,
+)
 
 __all__ = [
     "SliderParams",
     "SliderError",
     "validate_slider",
     "SLIDER_PRESETS",
+    "WheelParams",
+    "WheelError",
+    "validate_wheel",
+    "WHEEL_PRESETS",
 ]

@@ -3,8 +3,9 @@
 The preview consumes the *same* geometry model the exporters serialise, so what
 the user sees is byte-faithful to the emitted copper (the WYSIWYG guarantee from
 ``docs/plan.md`` section 3). Each electrode polygon is rendered from its exact
-``Electrode.points``; the courtyard and fab outline mirror the footprint's
-``F.CrtYd`` / ``F.Fab`` rectangles.
+``Electrode.points``; the courtyard and fab outline are drawn from the same
+``fab_primitives`` / ``courtyard_outline`` the footprint exporter emits (rects
+for a slider, circles for a wheel).
 
 Coordinate space is geometry millimetres, identical to the footprint's. KiCad and
 Qt's scene both use a y-down convention, so no axis flip is needed.
@@ -18,8 +19,12 @@ from PySide6.QtCore import QPointF, QRectF, Qt
 from PySide6.QtGui import QBrush, QColor, QImage, QPainter, QPen, QPolygonF
 from PySide6.QtWidgets import QGraphicsScene, QGraphicsView
 
+from typing import Union
+
 from ..export.footprint import COURTYARD_MARGIN
-from ..geometry import Electrode, SliderGeometry
+from ..geometry import Electrode, SliderGeometry, WheelGeometry
+
+WidgetGeometry = Union[SliderGeometry, WheelGeometry]
 
 __all__ = ["PreviewView", "LAYERS"]
 
@@ -71,7 +76,7 @@ class PreviewView(QGraphicsView):
         self.setResizeAnchor(QGraphicsView.ViewportAnchor.AnchorViewCenter)
         # Qt scenes are y-down like KiCad; flip is unnecessary. Keep mm upright.
 
-        self._geometry: SliderGeometry | None = None
+        self._geometry: WidgetGeometry | None = None
         self._layer_items: dict[str, list] = {name: [] for name, _ in LAYERS}
         self._electrode_items: dict[str, object] = {}  # pad_number -> polygon item
         self._layer_visible: dict[str, bool] = {name: True for name, _ in LAYERS}
@@ -79,11 +84,11 @@ class PreviewView(QGraphicsView):
 
     # -- public API --------------------------------------------------------- #
     @property
-    def geometry_model(self) -> SliderGeometry | None:
+    def geometry_model(self) -> WidgetGeometry | None:
         """The geometry currently displayed (``None`` before the first render)."""
         return self._geometry
 
-    def set_geometry(self, geo: SliderGeometry, *, fit: bool = False) -> None:
+    def set_geometry(self, geo: WidgetGeometry, *, fit: bool = False) -> None:
         """Render *geo*, preserving the current zoom/pan unless ``fit`` is set."""
         first = self._geometry is None
         self._geometry = geo
@@ -136,30 +141,22 @@ class PreviewView(QGraphicsView):
         m = COURTYARD_MARGIN
         return QRectF(minx - m, miny - m, (maxx - minx) + 2 * m, (maxy - miny) + 2 * m)
 
-    def _rebuild_scene(self, geo: SliderGeometry) -> None:
+    def _rebuild_scene(self, geo) -> None:
         self._scene.clear()
         self._layer_items = {name: [] for name, _ in LAYERS}
         self._electrode_items = {}
 
-        minx, miny, maxx, maxy = geo.bounds
-        m = COURTYARD_MARGIN
+        # Fab documentation outline (drawn first / underneath). Shapes come from
+        # the geometry itself (rects for a slider, circles for a wheel), matching
+        # exactly what the footprint exporter emits.
+        fab_pen = self._cosmetic_pen(_FAB, 1.0)
+        for prim in geo.fab_primitives:
+            self._register("fab", self._add_primitive(prim, fab_pen))
 
-        # Fab documentation outline (drawn first / underneath).
-        fab = self._scene.addRect(
-            QRectF(minx, miny, maxx - minx, maxy - miny),
-            self._cosmetic_pen(_FAB, 1.0),
-            QBrush(Qt.BrushStyle.NoBrush),
-        )
-        self._register("fab", fab)
-
-        # Courtyard.
+        # Courtyard: the bounding outline grown by the courtyard margin.
         crt_pen = self._cosmetic_pen(_COURTYARD, 1.0, dashed=True)
-        crt = self._scene.addRect(
-            QRectF(minx - m, miny - m, (maxx - minx) + 2 * m, (maxy - miny) + 2 * m),
-            crt_pen,
-            QBrush(Qt.BrushStyle.NoBrush),
-        )
-        self._register("courtyard", crt)
+        crt_prim = self._expand_primitive(geo.courtyard_outline, COURTYARD_MARGIN)
+        self._register("courtyard", self._add_primitive(crt_prim, crt_pen))
 
         # Electrodes.
         for e in geo.electrodes:
@@ -198,6 +195,29 @@ class PreviewView(QGraphicsView):
     def _register(self, layer: str, item) -> None:
         item.setVisible(self._layer_visible[layer])
         self._layer_items[layer].append(item)
+
+    def _add_primitive(self, prim: tuple, pen: QPen):
+        """Draw a ``("rect", …)`` / ``("circle", …)`` outline primitive."""
+        kind = prim[0]
+        no_fill = QBrush(Qt.BrushStyle.NoBrush)
+        if kind == "rect":
+            _, x1, y1, x2, y2 = prim
+            return self._scene.addRect(QRectF(x1, y1, x2 - x1, y2 - y1), pen, no_fill)
+        if kind == "circle":
+            _, cx, cy, r = prim
+            return self._scene.addEllipse(QRectF(cx - r, cy - r, 2 * r, 2 * r), pen, no_fill)
+        raise ValueError(f"unknown outline primitive: {prim!r}")
+
+    @staticmethod
+    def _expand_primitive(prim: tuple, margin: float) -> tuple:
+        kind = prim[0]
+        if kind == "rect":
+            _, x1, y1, x2, y2 = prim
+            return ("rect", x1 - margin, y1 - margin, x2 + margin, y2 + margin)
+        if kind == "circle":
+            _, cx, cy, r = prim
+            return ("circle", cx, cy, r + margin)
+        raise ValueError(f"unknown outline primitive: {prim!r}")
 
     @staticmethod
     def _cosmetic_pen(color: QColor, width_px: float, *, dashed: bool = False) -> QPen:
