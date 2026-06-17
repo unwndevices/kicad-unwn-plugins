@@ -1,0 +1,174 @@
+(footprint "CT_Slider_Rect"
+	(version 20241229)
+	(generator "kicad-captouch")
+	(generator_version "0.1.0")
+	(layer "F.Cu")
+	(property "Reference" "REF**"
+		(at 0 -7.5 0)
+		(layer "F.SilkS")
+		(effects
+			(font
+				(size 1 1)
+				(thickness 0.15)
+			)
+		)
+	)
+	(property "Value" "CT_Slider_Rect"
+		(at 0 7.5 0)
+		(layer "F.Fab")
+		(effects
+			(font
+				(size 1 1)
+				(thickness 0.15)
+			)
+		)
+	)
+	(attr smd)
+	(fp_rect
+		(start -22.25 -6)
+		(end 22.25 6)
+		(stroke
+			(width 0.1)
+			(type default)
+		)
+		(fill no)
+		(layer "F.Fab")
+	)
+	(fp_rect
+		(start -22.5 -6.25)
+		(end 22.5 6.25)
+		(stroke
+			(width 0.05)
+			(type default)
+		)
+		(fill no)
+		(layer "F.CrtYd")
+	)
+	(pad "5" smd custom
+		(at -18.75 0)
+		(size 0.5 0.5)
+		(layers "F.Cu")
+		(options
+			(clearance outline)
+			(anchor circle)
+		)
+		(primitives
+			(gr_poly
+				(pts
+					(xy -3.5 -6)
+					(xy -3.5 6)
+					(xy 3.5 6)
+					(xy 3.5 -6)
+				)
+				(width 0)
+				(fill yes)
+			)
+		)
+	)
+	(pad "1" smd custom
+		(at -11.25 0)
+		(size 0.5 0.5)
+		(layers "F.Cu")
+		(options
+			(clearance outline)
+			(anchor circle)
+		)
+		(primitives
+			(gr_poly
+				(pts
+					(xy 3.5 6)
+					(xy 3.5 -6)
+					(xy -3.5 -6)
+					(xy -3.5 6)
+				)
+				(width 0)
+				(fill yes)
+			)
+		)
+	)
+	(pad "2" smd custom
+		(at -3.75 0)
+		(size 0.5 0.5)
+		(layers "F.Cu")
+		(options
+			(clearance outline)
+			(anchor circle)
+		)
+		(primitives
+			(gr_poly
+				(pts
+					(xy 3.5 6)
+					(xy 3.5 -6)
+					(xy -3.5 -6)
+					(xy -3.5 6)
+				)
+				(width 0)
+				(fill yes)
+			)
+		)
+	)
+	(pad "3" smd custom
+		(at 3.75 0)
+		(size 0.5 0.5)
+		(layers "F.Cu")
+		(options
+			(clearance outline)
+			(anchor circle)
+		)
+		(primitives
+			(gr_poly
+				(pts
+					(xy 3.5 6)
+					(xy 3.5 -6)
+					(xy -3.5 -6)
+					(xy -3.5 6)
+				)
+				(width 0)
+				(fill yes)
+			)
+		)
+	)
+	(pad "4" smd custom
+		(at 11.25 0)
+		(size 0.5 0.5)
+		(layers "F.Cu")
+		(options
+			(clearance outline)
+			(anchor circle)
+		)
+		(primitives
+			(gr_poly
+				(pts
+					(xy 3.5 6)
+					(xy 3.5 -6)
+					(xy -3.5 -6)
+					(xy -3.5 6)
+				)
+				(width 0)
+				(fill yes)
+			)
+		)
+	)
+	(pad "6" smd custom
+		(at 18.75 0)
+		(size 0.5 0.5)
+		(layers "F.Cu")
+		(options
+			(clearance outline)
+			(anchor circle)
+		)
+		(primitives
+			(gr_poly
+				(pts
+					(xy 3.5 6)
+					(xy 3.5 -6)
+					(xy -3.5 -6)
+					(xy -3.5 6)
+				)
+				(width 0)
+				(fill yes)
+			)
+		)
+	)
+	(embedded_fonts no)
+)
