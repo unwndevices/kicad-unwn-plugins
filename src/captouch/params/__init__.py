@@ -10,6 +10,13 @@ This module has **no KiCad, geometry, or Qt imports** — it is pure data.
 
 from __future__ import annotations
 
+from .fab import (
+    DEFAULT_PROFILE,
+    FAB_PROFILES,
+    FabRules,
+    FabViolation,
+    check_fab,
+)
 from .slider import (
     SLIDER_PRESETS,
     SliderError,
@@ -42,4 +49,9 @@ __all__ = [
     "TrackpadError",
     "validate_trackpad",
     "TRACKPAD_PRESETS",
+    "FabRules",
+    "FabViolation",
+    "FAB_PROFILES",
+    "DEFAULT_PROFILE",
+    "check_fab",
 ]
