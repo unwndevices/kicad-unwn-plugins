@@ -88,6 +88,36 @@ def test_footprint_uses_rect_outline():
     assert "F.Fab" in layers and "F.CrtYd" in layers
 
 
+def test_rrect_mask_emits_fp_poly_fab_outline():
+    # Stage A: rrect mask → F.Fab is a polyline fp_poly; courtyard stays a rect.
+    geo = build_trackpad(TrackpadParams(num_rows=4, num_cols=4,
+                                        mask_shape="rrect", corner_radius=2.0))
+    fp_node = footprint.trackpad_footprint(geo)
+    fab_polys = [p for p in sexpr.find_all(fp_node, "fp_poly")
+                 if sexpr.find(p, "layer")[1] == "F.Fab"]
+    assert len(fab_polys) == 1
+    rects = sexpr.find_all(fp_node, "fp_rect")
+    assert [sexpr.find(r, "layer")[1] for r in rects] == ["F.CrtYd"]
+
+
+def test_circle_mask_emits_fp_circle_fab_outline():
+    # Stage A: circle mask → F.Fab is an fp_circle; courtyard stays a rect.
+    geo = build_trackpad(TrackpadParams(num_rows=4, num_cols=4, mask_shape="circle"))
+    fp_node = footprint.trackpad_footprint(geo)
+    fab_circles = [c for c in sexpr.find_all(fp_node, "fp_circle")
+                   if sexpr.find(c, "layer")[1] == "F.Fab"]
+    assert len(fab_circles) == 1
+    rects = sexpr.find_all(fp_node, "fp_rect")
+    assert [sexpr.find(r, "layer")[1] for r in rects] == ["F.CrtYd"]
+
+
+@pytest.mark.parametrize("shape,kw", [("rrect", {"corner_radius": 2.0}), ("circle", {})])
+def test_masked_footprint_text_round_trips(shape, kw):
+    geo = build_trackpad(TrackpadParams(num_rows=4, num_cols=4, mask_shape=shape, **kw))
+    text = footprint.trackpad_footprint_text(geo)
+    assert sexpr.dumps(sexpr.loads(text)) + "\n" == text
+
+
 def test_version_tokens():
     geo = build_trackpad(GOLDEN_PARAMS)
     fp_node = footprint.trackpad_footprint(geo)

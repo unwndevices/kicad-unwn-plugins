@@ -19,7 +19,12 @@ from typing import Union
 
 from .. import __version__, sexpr
 from ..geometry import SliderGeometry, TrackpadGeometry, WheelGeometry
-from ..geometry._base import ANCHOR_RADIUS, anchor_point, polygon_points
+from ..geometry._base import (
+    ANCHOR_RADIUS,
+    anchor_point,
+    polygon_points,
+    rounded_rect_points,
+)
 from ..sexpr import Sym
 
 #: Any widget geometry the exporter can serialise (duck-typed: ``electrodes``,
@@ -85,12 +90,32 @@ def _fp_circle(center: Point, radius: float, *, layer: str, width: float) -> lis
     ]
 
 
+def _fp_poly(points: Sequence[Point], *, layer: str, width: float) -> list:
+    return [
+        Sym("fp_poly"),
+        _pts(points),
+        [Sym("stroke"), [Sym("width"), width], [Sym("type"), Sym("default")]],
+        [Sym("fill"), Sym("no")],
+        [Sym("layer"), layer],
+    ]
+
+
+def _fp_rrect(p1: Point, p2: Point, r: float, *, layer: str, width: float) -> list:
+    """A rounded rectangle. KiCad has no filleted-rect primitive, so it is emitted
+    as a polyline ``fp_poly`` whose corner arcs come from :func:`rounded_rect_points`."""
+    pts = rounded_rect_points(p1[0], p1[1], p2[0], p2[1], r)
+    return _fp_poly(pts, layer=layer, width=width)
+
+
 def _expand_outline(prim: tuple, margin: float) -> tuple:
     """Grow a documentation primitive outward by *margin* (for the courtyard)."""
     kind = prim[0]
     if kind == "rect":
         _, x1, y1, x2, y2 = prim
         return ("rect", x1 - margin, y1 - margin, x2 + margin, y2 + margin)
+    if kind == "rrect":
+        _, x1, y1, x2, y2, r = prim
+        return ("rrect", x1 - margin, y1 - margin, x2 + margin, y2 + margin, r + margin)
     if kind == "circle":
         _, cx, cy, r = prim
         return ("circle", cx, cy, r + margin)
@@ -98,11 +123,14 @@ def _expand_outline(prim: tuple, margin: float) -> tuple:
 
 
 def _emit_outline(prim: tuple, *, layer: str, width: float) -> list:
-    """Render a ``("rect", …)`` / ``("circle", …)`` primitive on *layer*."""
+    """Render a ``("rect"|"rrect"|"circle", …)`` primitive on *layer*."""
     kind = prim[0]
     if kind == "rect":
         _, x1, y1, x2, y2 = prim
         return _fp_rect((x1, y1), (x2, y2), layer=layer, width=width)
+    if kind == "rrect":
+        _, x1, y1, x2, y2, r = prim
+        return _fp_rrect((x1, y1), (x2, y2), r, layer=layer, width=width)
     if kind == "circle":
         _, cx, cy, r = prim
         return _fp_circle((cx, cy), r, layer=layer, width=width)
