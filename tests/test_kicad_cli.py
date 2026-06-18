@@ -183,13 +183,16 @@ def test_trackpad_masked_footprint_renders(kw, tmp_path):
     assert (svg_dir / "CT_Trackpad.svg").exists()
 
 
+@pytest.mark.parametrize("rows,cols", [(4, 4), (5, 5), (6, 6)])
 @pytest.mark.parametrize("kw", [
     {"mask_shape": "rrect", "corner_radius": 2.0}, {"mask_shape": "circle"},
 ])
-def test_trackpad_masked_outline_drc_clean(kw, tmp_path):
-    # Stage A: copper is still the full rectangle, so a rrect/circle F.Fab outline
-    # must not perturb DRC — it stays as clean as the rect trackpad.
-    geo = build_trackpad(TrackpadParams(name="CT_Trackpad", num_rows=4, num_cols=4, **kw))
+def test_trackpad_masked_copper_drc_clean(kw, rows, cols, tmp_path):
+    # Clipped circle/rrect copper must be DRC-clean AND fully connected across the
+    # sizes where the mask drops corner diamonds: an empty unconnected_items proves
+    # every kept Tx island is still bridged and no clipped Rx arc floats — the
+    # correctness guarantee behind the centre-inside construction.
+    geo = build_trackpad(TrackpadParams(name="CT_Trackpad", num_rows=rows, num_cols=cols, **kw))
     board = tmp_path / "board.kicad_pcb"
     board.write_text(widget_board_text(geo, nets=trackpad_net_map(geo)))
     report = _drc(board, tmp_path / "drc.json")
