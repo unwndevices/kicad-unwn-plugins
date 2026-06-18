@@ -12,6 +12,7 @@ from __future__ import annotations
 
 from ._base import Electrode
 from .slider import SliderGeometry, build_slider
+from .trackpad import TrackpadGeometry, TrackpadNet, Via, build_trackpad
 from .wheel import WheelGeometry, build_wheel
 
 __all__ = [
@@ -19,5 +20,9 @@ __all__ = [
     "SliderGeometry",
     "build_wheel",
     "WheelGeometry",
+    "build_trackpad",
+    "TrackpadGeometry",
+    "TrackpadNet",
+    "Via",
     "Electrode",
 ]
