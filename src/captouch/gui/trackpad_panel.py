@@ -102,6 +102,9 @@ class TrackpadPanel(PanelBase):
         mf2.addRow("Radius (mm)", self._with_auto(self.radius, self.radius_auto))
         root.addWidget(mask_box)
 
+        # Optional support copper (hatched ground + guard ring), default off.
+        root.addWidget(self._build_support_group())
+
         root.addStretch(1)
 
         self.name.textEdited.connect(self._emit)
@@ -169,6 +172,7 @@ class TrackpadPanel(PanelBase):
             kw["corner_radius"] = self.corner_radius.value()
         if shape == "circle" and not self.radius_auto.isChecked():
             kw["radius"] = self.radius.value()
+        kw.update(self._support_kwargs())
         return TrackpadParams(**kw)
 
     def set_params(self, p: TrackpadParams) -> None:
@@ -190,6 +194,7 @@ class TrackpadPanel(PanelBase):
             self.radius_auto.setChecked(p.radius is None)
             if p.radius is not None:
                 self.radius.setValue(p.radius)
+            self._load_support(p)
             self._on_mask()
         finally:
             self._loading = False

@@ -458,3 +458,104 @@ def test_invalid_param_outlines_offending_field_and_clears(qapp):
     win._rebuild()
     assert not win.panel.segment_width.styleSheet()  # cleared
     assert not win.panel.finger_diameter.styleSheet()
+
+
+# --------------------------------------------------------------------------- #
+# support copper (optional hatched ground + guard ring, default off)
+# --------------------------------------------------------------------------- #
+def test_support_off_by_default_emits_no_zone(qapp):
+    from captouch.gui.panel import ParamPanel
+
+    panel = ParamPanel()
+    p = panel.params()
+    assert not p.ground_hatch and not p.guard_ring  # default off
+    assert "(zone" not in footprint.widget_footprint_text(build_slider(p))
+
+
+def test_support_spins_enable_gate_on_their_checkbox(qapp):
+    from captouch.gui.panel import ParamPanel
+
+    panel = ParamPanel()
+    # Both features off → their spins are disabled.
+    assert not panel.ground_margin.isEnabled()
+    assert not panel.guard_width.isEnabled()
+
+    panel.ground_hatch.setChecked(True)
+    assert panel.ground_margin.isEnabled() and panel.ground_hatch_pitch.isEnabled()
+    assert not panel.guard_width.isEnabled()  # guard still off
+
+    panel.guard_ring.setChecked(True)
+    assert panel.guard_width.isEnabled() and panel.guard_mask_open.isEnabled()
+
+
+def test_toggling_ground_hatch_rebuilds_and_emits_zone(qapp):
+    from captouch.gui.app import MainWindow
+
+    win = MainWindow()  # slider panel, support off
+    assert "(zone" not in footprint.widget_footprint_text(win.preview.geometry_model)
+
+    win.panel.ground_hatch.setChecked(True)  # emits changed → live rebuild
+    geo = win.preview.geometry_model
+    assert geo.params.ground_hatch
+    assert "(zone" in footprint.widget_footprint_text(geo)  # export now has a zone
+    assert win.preview._layer_items["ground"]  # preview gained the ground pour
+
+
+def test_guard_ring_draws_guard_layer_and_zone(qapp):
+    from captouch.gui.preview import PreviewView
+
+    geo = build_slider(SliderParams(guard_ring=True))
+    view = PreviewView()
+    view.set_geometry(geo)
+    assert view._layer_items["guard"]  # the F.Cu ring band is drawn
+    assert "(zone" in footprint.widget_footprint_text(geo)
+
+
+def test_trackpad_support_overlay_and_zone(qapp):
+    from captouch.gui.app import MainWindow
+
+    win = MainWindow()
+    win._on_widget_changed(2)  # trackpad
+    win.panel.guard_ring.setChecked(True)
+    geo = win.preview.geometry_model
+    assert geo.params.guard_ring
+    assert "(zone" in footprint.trackpad_footprint_text(geo)
+    assert win.preview._layer_items["guard"]
+
+
+def test_support_params_round_trip_through_panel(qapp):
+    from captouch.gui.wheel_panel import WheelPanel
+    from captouch.params import WheelParams
+
+    panel = WheelPanel()
+    src = WheelParams(
+        ground_hatch=True,
+        guard_ring=True,
+        guard_mask_open=False,
+        ground_margin=3.0,
+        guard_gap=1.5,
+    )
+    panel.set_params(src)
+    got = panel.params()
+    assert got.ground_hatch and got.guard_ring and not got.guard_mask_open
+    assert got.ground_margin == pytest.approx(3.0)
+    assert got.guard_gap == pytest.approx(1.5)
+
+
+def test_invalid_support_outlines_offending_field(qapp):
+    from captouch.gui.app import MainWindow
+
+    win = MainWindow()  # slider panel
+    # Hatch pitch must exceed line width; this violates it and names both fields.
+    win.panel.set_params(
+        SliderParams(ground_hatch=True, ground_hatch_width=0.5, ground_hatch_pitch=0.1)
+    )
+    win._rebuild()
+    assert win._status.text().startswith("⚠")
+    assert win.panel.ground_hatch_pitch.styleSheet()  # outlined
+    assert win.panel.ground_hatch_width.styleSheet()
+    assert not win.panel.ground_margin.styleSheet()  # not named → untouched
+
+    win.panel.set_params(SliderParams())  # valid again
+    win._rebuild()
+    assert not win.panel.ground_hatch_pitch.styleSheet()  # cleared

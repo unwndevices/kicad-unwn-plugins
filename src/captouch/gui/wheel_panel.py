@@ -102,6 +102,9 @@ class WheelPanel(PanelBase):
         mf.addRow(self.relax)
         root.addWidget(misc_box)
 
+        # Optional support copper (hatched ground + guard ring), default off.
+        root.addWidget(self._build_support_group())
+
         root.addStretch(1)
 
         self.name.textEdited.connect(self._emit)
@@ -155,6 +158,7 @@ class WheelPanel(PanelBase):
             arc_resolution=self.arc_resolution.value(),
             relax_finger_constraint=self.relax.isChecked(),
             name=self.name.text() or "CT_Wheel",
+            **self._support_kwargs(),
         )
 
     def set_params(self, p: WheelParams) -> None:
@@ -178,6 +182,7 @@ class WheelPanel(PanelBase):
             self.tooth_depth_auto.setChecked(p.tooth_depth is None)
             self.tooth_depth.setValue(p.amplitude)
 
+            self._load_support(p)
             self._on_shape()
         finally:
             self._loading = False

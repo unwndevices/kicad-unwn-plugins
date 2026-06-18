@@ -13,6 +13,8 @@ from PySide6.QtCore import Signal
 from PySide6.QtWidgets import (
     QCheckBox,
     QDoubleSpinBox,
+    QFormLayout,
+    QGroupBox,
     QHBoxLayout,
     QSpinBox,
     QWidget,
@@ -52,6 +54,110 @@ class PanelBase(QWidget):
         self.tooth_depth_auto.setEnabled(teeth)
         self.tooth_depth.setEnabled(teeth and not self.tooth_depth_auto.isChecked())
         self._emit()
+
+    # -- support copper (optional, default off) ----------------------------- #
+    def _build_support_group(self) -> QGroupBox:
+        """A "Support copper (optional)" group shared by every widget panel.
+
+        Two opt-in, default-off features (matching :mod:`captouch.params.support`):
+        a hatched ground pour on B.Cu and a guard / ESD ring on F.Cu. The spin-box
+        attributes are named **exactly** after the params fields (``ground_margin``
+        … ``guard_break``) so :meth:`show_error` highlights the right control on a
+        validation failure. The ``ground_*`` spins are enable-gated on the
+        ``ground_hatch`` checkbox and the ``guard_*`` spins on ``guard_ring``.
+        """
+        box = QGroupBox("Support copper (optional)")
+        form = QFormLayout(box)
+
+        # Hatched ground pour (B.Cu) — shields without solid-pour loading.
+        self.ground_hatch = QCheckBox("Hatched ground pour (B.Cu)")
+        self.ground_margin = self._dspin(0.0, 20.0, 0.5)
+        self.ground_hatch_width = self._dspin(0.05, 2.0, 0.01)
+        self.ground_hatch_pitch = self._dspin(0.1, 10.0, 0.1)
+        form.addRow(self.ground_hatch)
+        form.addRow("Ground margin (mm)", self.ground_margin)
+        form.addRow("Hatch line width (mm)", self.ground_hatch_width)
+        form.addRow("Hatch pitch (mm)", self.ground_hatch_pitch)
+
+        # Guard / ESD ring (F.Cu) — broken loop, mask-free by default (§4.6).
+        self.guard_ring = QCheckBox("Guard / ESD ring (F.Cu)")
+        self.guard_width = self._dspin(0.1, 5.0, 0.1)
+        self.guard_gap = self._dspin(0.1, 10.0, 0.5)
+        self.guard_break = self._dspin(0.0, 5.0, 0.05)
+        self.guard_mask_open = QCheckBox("Open solder mask over ring (§4.6)")
+        form.addRow(self.guard_ring)
+        form.addRow("Ring width (mm)", self.guard_width)
+        form.addRow("Ring gap (mm)", self.guard_gap)
+        form.addRow("Ring break (mm)", self.guard_break)
+        form.addRow(self.guard_mask_open)
+
+        # Re-gate on toggle (no emit there — emit is wired separately, as elsewhere).
+        self.ground_hatch.toggled.connect(self._on_support_toggle)
+        self.ground_hatch.toggled.connect(self._emit)
+        self.guard_ring.toggled.connect(self._on_support_toggle)
+        self.guard_ring.toggled.connect(self._emit)
+        self.guard_mask_open.toggled.connect(self._emit)
+
+        self._set_tooltips(
+            {
+                self.ground_hatch: (
+                    "Add a meshed ground pour on the opposite layer (B.Cu) — shields "
+                    "without the capacitive loading of a solid pour (guidelines §5.1)."
+                ),
+                self.ground_margin: "How far the ground pour extends past the electrodes (mm).",
+                self.ground_hatch_width: "Hatch copper-line width (mm). Default 0.18 = 7 mil.",
+                self.ground_hatch_pitch: (
+                    "Hatch centre-to-centre pitch (mm); must exceed the line width. "
+                    "Default 1.14 = 45 mil top layer (Infineon)."
+                ),
+                self.guard_ring: (
+                    "Add a grounded guard / ESD ring on the electrode layer (F.Cu), "
+                    "offset outward from the electrodes (§5.2)."
+                ),
+                self.guard_width: "Guard-ring band width (mm).",
+                self.guard_gap: "Gap from the electrodes to the guard ring (mm) — §5.2.",
+                self.guard_break: "Break in the ring (mm) so it is not a closed-loop antenna (§4.6).",
+                self.guard_mask_open: "Expose the ESD ring through the solder mask (§4.6).",
+            }
+        )
+        self._on_support_toggle()  # initial enable state
+        return box
+
+    def _on_support_toggle(self, *args) -> None:
+        """Enable each feature's spin boxes only while its checkbox is ticked."""
+        ground = self.ground_hatch.isChecked()
+        for w in (self.ground_margin, self.ground_hatch_width, self.ground_hatch_pitch):
+            w.setEnabled(ground)
+        guard = self.guard_ring.isChecked()
+        for w in (self.guard_width, self.guard_gap, self.guard_break, self.guard_mask_open):
+            w.setEnabled(guard)
+
+    def _support_kwargs(self) -> dict:
+        """The support-copper field overrides to splice into a panel's ``params()``."""
+        return dict(
+            ground_hatch=self.ground_hatch.isChecked(),
+            ground_margin=self.ground_margin.value(),
+            ground_hatch_width=self.ground_hatch_width.value(),
+            ground_hatch_pitch=self.ground_hatch_pitch.value(),
+            guard_ring=self.guard_ring.isChecked(),
+            guard_width=self.guard_width.value(),
+            guard_gap=self.guard_gap.value(),
+            guard_break=self.guard_break.value(),
+            guard_mask_open=self.guard_mask_open.isChecked(),
+        )
+
+    def _load_support(self, p) -> None:
+        """Load *p*'s support-copper fields into the form (call under ``_loading``)."""
+        self.ground_hatch.setChecked(p.ground_hatch)
+        self.ground_margin.setValue(p.ground_margin)
+        self.ground_hatch_width.setValue(p.ground_hatch_width)
+        self.ground_hatch_pitch.setValue(p.ground_hatch_pitch)
+        self.guard_ring.setChecked(p.guard_ring)
+        self.guard_width.setValue(p.guard_width)
+        self.guard_gap.setValue(p.guard_gap)
+        self.guard_break.setValue(p.guard_break)
+        self.guard_mask_open.setChecked(p.guard_mask_open)
+        self._on_support_toggle()
 
     # -- tooltips & inline validation --------------------------------------- #
     @staticmethod

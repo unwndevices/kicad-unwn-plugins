@@ -109,6 +109,9 @@ class ParamPanel(PanelBase):
         ef.addRow(self.relax)
         root.addWidget(end_box)
 
+        # Optional support copper (hatched ground + guard ring), default off.
+        root.addWidget(self._build_support_group())
+
         root.addStretch(1)
 
         self.name.textEdited.connect(self._emit)
@@ -166,6 +169,7 @@ class ParamPanel(PanelBase):
             tip_radius=self.tip_radius.value(),
             relax_finger_constraint=self.relax.isChecked(),
             name=self.name.text() or "CT_Slider",
+            **self._support_kwargs(),
         )
 
     def set_params(self, p: SliderParams) -> None:
@@ -190,6 +194,7 @@ class ParamPanel(PanelBase):
             self.tooth_depth_auto.setChecked(p.tooth_depth is None)
             self.tooth_depth.setValue(p.amplitude)
 
+            self._load_support(p)
             self._on_shape()  # sync enable-state to the loaded shape
         finally:
             self._loading = False

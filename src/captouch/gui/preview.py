@@ -18,24 +18,35 @@ from __future__ import annotations
 from typing import Union
 
 from PySide6.QtCore import QPointF, QRectF, QSize, Qt
-from PySide6.QtGui import QBrush, QColor, QImage, QPainter, QPen, QPolygonF
+from PySide6.QtGui import QBrush, QColor, QImage, QPainter, QPainterPath, QPen, QPolygonF
 from PySide6.QtWidgets import QGraphicsPolygonItem, QGraphicsScene, QGraphicsView
 
 from ..export.footprint import COURTYARD_MARGIN
-from ..geometry import Electrode, SliderGeometry, TrackpadGeometry, WheelGeometry
+from ..geometry import (
+    Electrode,
+    SliderGeometry,
+    SupportCopper,
+    TrackpadGeometry,
+    WheelGeometry,
+    build_support,
+)
 from ..geometry._base import polygon_points, rounded_rect_points
+from ..geometry.zones import NETTIE_DIAMETER, NETTIE_DRILL
 
 WidgetGeometry = Union[SliderGeometry, WheelGeometry, TrackpadGeometry]
 
 __all__ = ["PreviewView", "LAYERS"]
 
 #: Toggleable preview layers, in stacking order, with human labels. ``back_copper``
-#: and ``vias`` are only populated by the (two-layer) trackpad.
+#: and ``vias`` are only populated by the (two-layer) trackpad; ``ground`` and
+#: ``guard`` only by the optional support copper.
 LAYERS: tuple[tuple[str, str], ...] = (
     ("fab", "Fab outline"),
     ("courtyard", "Courtyard"),
+    ("ground", "Ground pour"),
     ("back_copper", "B.Cu bridges"),
     ("copper", "F.Cu copper"),
+    ("guard", "Guard ring"),
     ("dummies", "Dummy (GND)"),
     ("vias", "Vias"),
     ("anchors", "Pad anchors"),
@@ -51,6 +62,12 @@ _DUMMY_FILL = QColor("#4a565f")
 _DUMMY_EDGE = QColor("#6c7a85")
 _BCU_FILL = QColor(64, 150, 160, 150)  # teal, semi-transparent (it's on the back)
 _BCU_EDGE = QColor("#54b0bd")
+# Optional support copper. Ground pour (B.Cu) hatched + translucent; guard ring
+# (F.Cu) a translucent terracotta distinct from the electrode orange.
+_GROUND_FILL = QColor(64, 150, 160, 70)
+_GROUND_EDGE = QColor("#54b0bd")
+_GUARD_FILL = QColor(210, 120, 90, 110)
+_GUARD_EDGE = QColor("#d2785a")
 _VIA_FILL = QColor("#c9d1d9")
 _VIA_EDGE = QColor("#10141a")
 _COURTYARD = QColor("#c46fb3")
@@ -72,6 +89,24 @@ def _qpoly(points) -> QPolygonF:
     return QPolygonF([QPointF(x, y) for (x, y) in points])
 
 
+def _ring(coords) -> QPolygonF:
+    """A shapely ring's coordinates as a :class:`QPolygonF` (drop the closing dup)."""
+    pts = list(coords)
+    if pts and pts[0] == pts[-1]:
+        pts = pts[:-1]
+    return QPolygonF([QPointF(x, y) for (x, y) in pts])
+
+
+def _qpath(poly) -> QPainterPath:
+    """A shapely polygon (exterior + any holes) as a hole-faithful painter path."""
+    path = QPainterPath()
+    path.setFillRule(Qt.FillRule.OddEvenFill)
+    path.addPolygon(_ring(poly.exterior.coords))
+    for interior in poly.interiors:
+        path.addPolygon(_ring(interior.coords))
+    return path
+
+
 class PreviewView(QGraphicsView):
     """Pan/zoom canvas drawing the current slider geometry."""
 
@@ -88,6 +123,7 @@ class PreviewView(QGraphicsView):
         # Qt scenes are y-down like KiCad; flip is unnecessary. Keep mm upright.
 
         self._geometry: WidgetGeometry | None = None
+        self._support: SupportCopper | None = None  # cached for the current geometry
         self._layer_items: dict[str, list] = {name: [] for name, _ in LAYERS}
         self._electrode_items: dict[str, QGraphicsPolygonItem] = {}  # pad_number -> item
         self._net_items: dict[str, list[QGraphicsPolygonItem]] = {}  # trackpad net items
@@ -193,6 +229,11 @@ class PreviewView(QGraphicsView):
         """Bounding rect of the copper + courtyard in scene coordinates."""
         if self._geometry is None:
             return QRectF()
+        if self._support is not None:
+            # The grown courtyard (already margin-padded) is the outermost extent.
+            xs = [x for x, _ in self._support.courtyard_pts]
+            ys = [y for _, y in self._support.courtyard_pts]
+            return QRectF(min(xs), min(ys), max(xs) - min(xs), max(ys) - min(ys))
         minx, miny, maxx, maxy = self._geometry.bounds
         m = COURTYARD_MARGIN
         return QRectF(minx - m, miny - m, (maxx - minx) + 2 * m, (maxy - miny) + 2 * m)
@@ -203,27 +244,60 @@ class PreviewView(QGraphicsView):
         self._electrode_items = {}
         self._net_items = {}
 
+        # Optional support copper. When present it replaces the widget's own fab /
+        # courtyard with grown outlines that enclose the ground pour + guard ring,
+        # exactly as the footprint exporter does.
+        sc = build_support(geo)
+        self._support = sc
+
         # Fab documentation outline (drawn first / underneath). Shapes come from
         # the geometry itself (rects for a slider, circles for a wheel), matching
         # exactly what the footprint exporter emits.
         fab_pen = self._cosmetic_pen(_FAB, 1.0)
-        for prim in geo.fab_primitives:
+        fab_prims = sc.fab_outlines if sc is not None else geo.fab_primitives
+        for prim in fab_prims:
             self._register("fab", self._add_primitive(prim, fab_pen))
 
         # Courtyard: the bounding outline grown by the courtyard margin.
         crt_pen = self._cosmetic_pen(_COURTYARD, 1.0, dashed=True)
-        crt_prim = self._expand_primitive(geo.courtyard_outline, COURTYARD_MARGIN)
-        self._register("courtyard", self._add_primitive(crt_prim, crt_pen))
+        if sc is not None:
+            self._register(
+                "courtyard",
+                self._scene.addPolygon(
+                    _qpoly(sc.courtyard_pts), crt_pen, QBrush(Qt.BrushStyle.NoBrush)
+                ),
+            )
+        else:
+            crt_prim = self._expand_primitive(geo.courtyard_outline, COURTYARD_MARGIN)
+            self._register("courtyard", self._add_primitive(crt_prim, crt_pen))
+
+        # Ground pour (B.Cu), drawn under the electrodes — a translucent hatch tint.
+        if sc is not None and sc.ground is not None:
+            self._register(
+                "ground",
+                self._scene.addPath(
+                    _qpath(sc.ground),
+                    self._cosmetic_pen(_GROUND_EDGE, 1.0),
+                    QBrush(_GROUND_FILL, Qt.BrushStyle.BDiagPattern),
+                ),
+            )
 
         # The trackpad is two-layer (F.Cu diamonds + B.Cu via-bridges); slider and
         # wheel are single-layer electrodes. Branch on the geometry type so each
         # draws faithfully (the WYSIWYG guarantee) rather than via a lossy shim.
         if isinstance(geo, TrackpadGeometry):
             self._draw_trackpad(geo)
-            self.setSceneRect(self._content_rect())
-            return
+        else:
+            self._draw_electrodes(geo)
 
-        # Electrodes.
+        # Guard ring (F.Cu) + GND net-tie marker, drawn over the copper.
+        if sc is not None:
+            self._draw_support_overlay(sc)
+
+        self.setSceneRect(self._content_rect())
+
+    def _draw_electrodes(self, geo) -> None:
+        """Render a slider / wheel: one filled polygon per electrode, + anchors."""
         for e in geo.electrodes:
             active = e.role == "active"
             fill = _COPPER_FILL if active else _DUMMY_FILL
@@ -255,7 +329,32 @@ class PreviewView(QGraphicsView):
                 label.setPos(ax - br.width() * scale / 2.0, ay - br.height() * scale / 2.0)
             self._register("labels", label)
 
-        self.setSceneRect(self._content_rect())
+    def _draw_support_overlay(self, sc) -> None:
+        """Draw the F.Cu guard ring and the thru-hole GND net-tie over the copper."""
+        if sc.guard is not None:
+            self._register(
+                "guard",
+                self._scene.addPath(
+                    _qpath(sc.guard), self._cosmetic_pen(_GUARD_EDGE, 1.2), QBrush(_GUARD_FILL)
+                ),
+            )
+        # The single thru-hole net-tie (outer copper + drilled hole), like a via.
+        # Tied to whichever feature layer is on, so it hides with that toggle.
+        layer = "guard" if sc.guard is not None else "ground"
+        _, (tx, ty) = sc.net_tie
+        d, drill = NETTIE_DIAMETER, NETTIE_DRILL
+        ring = self._scene.addEllipse(
+            QRectF(tx - d / 2, ty - d / 2, d, d),
+            self._cosmetic_pen(_VIA_EDGE, 1.0),
+            QBrush(_VIA_FILL),
+        )
+        hole = self._scene.addEllipse(
+            QRectF(tx - drill / 2, ty - drill / 2, drill, drill),
+            self._cosmetic_pen(_VIA_EDGE, 1.0),
+            QBrush(_BG),
+        )
+        self._register(layer, ring)
+        self._register(layer, hole)
 
     def _draw_trackpad(self, geo: TrackpadGeometry) -> None:
         """Render a trackpad: F.Cu diamonds/rows, B.Cu straps, and vias, by layer."""
@@ -334,6 +433,9 @@ class PreviewView(QGraphicsView):
         if kind == "circle":
             _, cx, cy, r = prim
             return self._scene.addEllipse(QRectF(cx - r, cy - r, 2 * r, 2 * r), pen, no_fill)
+        if kind == "poly":  # support-copper grown fab outline (a vertex ring)
+            _, pts = prim
+            return self._scene.addPolygon(_qpoly(pts), pen, no_fill)
         raise ValueError(f"unknown outline primitive: {prim!r}")
 
     @staticmethod
