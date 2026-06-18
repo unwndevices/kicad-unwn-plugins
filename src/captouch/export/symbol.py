@@ -12,7 +12,7 @@ from __future__ import annotations
 from typing import Union
 
 from .. import __version__, sexpr
-from ..geometry import SliderGeometry, TrackpadGeometry, WheelGeometry
+from ..geometry import SliderGeometry, TrackpadGeometry, WheelGeometry, net_tie_number
 from ..sexpr import Sym
 
 WidgetGeometry = Union[SliderGeometry, WheelGeometry, TrackpadGeometry]
@@ -217,9 +217,15 @@ def widget_symbol(geo: WidgetGeometry) -> list:
     """Build a multi-pin symbol for any widget; pin numbers match pad numbers.
 
     The geometry chooses the two pin columns via ``symbol_columns`` (slider:
-    active left / GND right; wheel: the ring's electrodes split into halves).
+    active left / GND right; wheel: the ring's electrodes split into halves). When
+    optional support copper is enabled, one extra ``GND`` pin (numbered to match
+    the footprint's net-tie pad) is appended to the right column, keeping pins 1:1
+    with pads.
     """
     left, right = geo.symbol_columns()
+    tie = net_tie_number(geo)
+    if tie is not None:
+        right = [*right, (tie, "GND")]
     return _symbol_node(geo.params.name, left, right)
 
 

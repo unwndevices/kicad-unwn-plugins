@@ -5,9 +5,28 @@ from __future__ import annotations
 import pytest
 
 from captouch import sexpr
-from captouch.export import footprint
-from captouch.geometry import build_slider, build_trackpad, build_wheel
+from captouch.export import footprint, symbol
+from captouch.geometry import build_slider, build_trackpad, build_wheel, net_tie_number
 from captouch.params import SliderParams, TrackpadParams, WheelParams
+
+
+def _pin_numbers(sym_lib):
+    sym = sexpr.find(sym_lib, "symbol")
+    nums = []
+    for sub in sexpr.find_all(sym, "symbol"):
+        for pin in sexpr.find_all(sub, "pin"):
+            nums.append(sexpr.find(pin, "number")[1])
+    return nums
+
+
+def _pin_named(sym_lib, name):
+    sym = sexpr.find(sym_lib, "symbol")
+    out = []
+    for sub in sexpr.find_all(sym, "symbol"):
+        for pin in sexpr.find_all(sub, "pin"):
+            if sexpr.find(pin, "name")[1] == name:
+                out.append(sexpr.find(pin, "number")[1])
+    return out
 
 
 def _zones(node):
@@ -131,6 +150,55 @@ def test_support_footprint_round_trips(build, params):
         else footprint.widget_footprint_text(geo)
     )
     assert sexpr.dumps(sexpr.loads(text)) + "\n" == text
+
+
+# --------------------------------------------------------------------------- #
+# symbol: GND pin added when (and only when) support copper is enabled
+# --------------------------------------------------------------------------- #
+def test_symbol_gains_one_gnd_pin_when_enabled():
+    off = symbol.widget_symbol_lib(build_wheel(WheelParams(name="W")))
+    on = symbol.widget_symbol_lib(build_wheel(WheelParams(name="W", ground_hatch=True)))
+    assert len(_pin_numbers(on)) == len(_pin_numbers(off)) + 1
+    tie = net_tie_number(build_wheel(WheelParams(name="W", ground_hatch=True)))
+    assert tie in _pin_named(on, "GND")  # the net-tie pin is named GND
+
+
+def test_only_one_extra_pin_for_both_features():
+    base = build_wheel(WheelParams(name="W"))
+    both = build_wheel(WheelParams(name="W", ground_hatch=True, guard_ring=True))
+    n = len(_pin_numbers(symbol.widget_symbol_lib(base)))
+    assert len(_pin_numbers(symbol.widget_symbol_lib(both))) == n + 1  # one shared GND tie
+
+
+@pytest.mark.parametrize(
+    "build,params,fp_fn,sym_fn",
+    [
+        (
+            build_slider,
+            SliderParams(name="S", ground_hatch=True, guard_ring=True),
+            footprint.widget_footprint,
+            symbol.widget_symbol_lib,
+        ),
+        (
+            build_trackpad,
+            TrackpadParams(name="T", ground_hatch=True, guard_ring=True),
+            footprint.trackpad_footprint,
+            symbol.trackpad_symbol_lib,
+        ),
+    ],
+)
+def test_pads_and_pins_stay_one_to_one(build, params, fp_fn, sym_fn):
+    geo = build(params)
+    pad_nums = {sexpr.children(p)[0] for p in sexpr.find_all(fp_fn(geo), "pad")}
+    pin_nums = set(_pin_numbers(sym_fn(geo)))
+    assert pad_nums == pin_nums  # GND net-tie pad is matched by the GND pin
+
+
+def test_off_symbol_unchanged():
+    # No support copper -> the symbol is byte-identical to before (no GND tie pin).
+    a = symbol.widget_symbol_lib_text(build_slider(SliderParams(name="S")))
+    b = symbol.widget_symbol_lib_text(build_slider(SliderParams(name="S", guard_gap=3.0)))
+    assert a == b
 
 
 def test_validate_rejects_degenerate_zone():
