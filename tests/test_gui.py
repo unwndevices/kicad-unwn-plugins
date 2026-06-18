@@ -418,3 +418,15 @@ def test_gui_save_load_params_round_trip(qapp):
     other.load_params(params_from_json(saved))
     assert isinstance(other._geo, WheelGeometry)
     assert other.panel.params().num_segments == 6
+
+
+@pytest.mark.parametrize("ext", ["png", "svg"])
+def test_preview_save_image(qapp, tmp_path, ext):
+    from captouch.gui.app import MainWindow
+
+    win = MainWindow()  # __init__ renders the default slider geometry
+    out = tmp_path / f"preview.{ext}"
+    win.preview.save_image(str(out))
+    assert out.exists() and out.stat().st_size > 0
+    if ext == "svg":
+        assert "<svg" in out.read_text(errors="ignore")

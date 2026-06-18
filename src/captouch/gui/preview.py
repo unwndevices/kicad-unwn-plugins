@@ -17,7 +17,7 @@ from __future__ import annotations
 
 from typing import Union
 
-from PySide6.QtCore import QPointF, QRectF, Qt
+from PySide6.QtCore import QPointF, QRectF, QSize, Qt
 from PySide6.QtGui import QBrush, QColor, QImage, QPainter, QPen, QPolygonF
 from PySide6.QtWidgets import QGraphicsPolygonItem, QGraphicsScene, QGraphicsView
 
@@ -152,6 +152,41 @@ class PreviewView(QGraphicsView):
         self.render(painter)
         painter.end()
         return img
+
+    def save_image(self, path: str, *, width: int = 1200) -> None:
+        """Save the widget content to *path* as PNG (raster) or SVG (vector).
+
+        The format is chosen by extension. Unlike :meth:`render_to_image`, this
+        renders the *scene content* (the copper + courtyard, with margin), so the
+        export captures the whole widget at its true aspect ratio regardless of
+        the current zoom/pan.
+        """
+        src = self._content_rect()
+        if src.isEmpty():
+            raise RuntimeError("nothing to export — no geometry rendered yet")
+        height = max(1, round(width * src.height() / src.width()))
+        target = QRectF(0, 0, width, height)
+
+        if path.lower().endswith(".svg"):
+            from PySide6.QtSvg import QSvgGenerator
+
+            gen = QSvgGenerator()
+            gen.setFileName(path)
+            gen.setSize(QSize(width, height))
+            gen.setViewBox(target)
+            painter = QPainter(gen)
+            self._scene.render(painter, target, src)
+            painter.end()
+            return
+
+        img = QImage(width, height, QImage.Format.Format_ARGB32)
+        img.fill(_BG)
+        painter = QPainter(img)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        self._scene.render(painter, target, src)
+        painter.end()
+        if not img.save(path):
+            raise RuntimeError(f"could not write image to {path}")
 
     # -- internals ---------------------------------------------------------- #
     def _content_rect(self) -> QRectF:

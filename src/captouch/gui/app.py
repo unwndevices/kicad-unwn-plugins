@@ -177,6 +177,9 @@ class MainWindow(QMainWindow):
         fit = QPushButton("Fit")
         fit.clicked.connect(self.preview.fit)
         bar.addWidget(fit)
+        img_btn = QPushButton("Save image…")
+        img_btn.clicked.connect(self._on_save_image)
+        bar.addWidget(img_btn)
         return bar
 
     def _build_fab_banner(self) -> QLabel:
@@ -280,6 +283,23 @@ class MainWindow(QMainWindow):
         fp_path, sym_path = self.export_to(Path(directory))
         self._status.setStyleSheet(_OK_STYLE)
         self._status.setText(f"Exported {fp_path.name} and {sym_path.name} → {directory}")
+
+    def _on_save_image(self) -> None:
+        if self._geo is None:
+            return
+        path, _ = QFileDialog.getSaveFileName(
+            self, "Save preview image", "preview.png", "PNG image (*.png);;SVG image (*.svg)"
+        )
+        if not path:
+            return
+        try:
+            self.preview.save_image(path)
+        except (OSError, RuntimeError) as exc:
+            self._status.setStyleSheet(_ERR_STYLE)
+            self._status.setText(f"⚠ could not save image: {exc}")
+            return
+        self._status.setStyleSheet(_OK_STYLE)
+        self._status.setText(f"Saved image → {path}")
 
     # -- parameter save / load ---------------------------------------------- #
     @staticmethod
