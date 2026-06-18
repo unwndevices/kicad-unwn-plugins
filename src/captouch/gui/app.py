@@ -32,7 +32,7 @@ from PySide6.QtWidgets import (
 from ..export import footprint, symbol
 from ..geometry import TrackpadGeometry, WheelGeometry
 from ..geometry._base import GeometryError
-from ..params import SliderError
+from ..params import DEFAULT_PROFILE, FAB_PROFILES, SliderError, check_fab
 from .panel import ParamPanel
 from .preview import LAYERS, PreviewView, WidgetGeometry
 from .trackpad_panel import TrackpadPanel
@@ -42,6 +42,12 @@ __all__ = ["MainWindow", "run", "main"]
 
 _OK_STYLE = "color: #8fce8f;"
 _ERR_STYLE = "color: #e88; font-weight: 600;"
+
+# Amber-on-dark advisory banner for fab-rule warnings (non-blocking).
+_FAB_BANNER_STYLE = (
+    "QLabel { background: #3a2f1a; color: #f0c674; border: 1px solid #6b5630; "
+    "border-radius: 6px; padding: 6px 10px; }"
+)
 
 # (label, panel factory) per selectable widget type.
 _WIDGETS = (("Slider", ParamPanel), ("Wheel", WheelPanel), ("Trackpad", TrackpadPanel))
@@ -130,6 +136,7 @@ class MainWindow(QMainWindow):
         rl.setSpacing(8)
         rl.addLayout(self._build_layer_bar())
         rl.addWidget(self.preview, 1)
+        rl.addWidget(self._build_fab_banner())
         rl.addLayout(self._build_export_bar())
 
         central = QWidget()
@@ -155,8 +162,26 @@ class MainWindow(QMainWindow):
         bar.addWidget(fit)
         return bar
 
+    def _build_fab_banner(self) -> QLabel:
+        """The non-blocking amber banner that lists current fab-rule warnings."""
+        self._fab_banner = QLabel()
+        self._fab_banner.setStyleSheet(_FAB_BANNER_STYLE)
+        self._fab_banner.setWordWrap(True)
+        self._fab_banner.setVisible(False)
+        return self._fab_banner
+
     def _build_export_bar(self) -> QHBoxLayout:
         bar = QHBoxLayout()
+        bar.addWidget(QLabel("Fab profile:"))
+        self._fab_profile = QComboBox()
+        for key in sorted(FAB_PROFILES):
+            self._fab_profile.addItem(key)
+            self._fab_profile.setItemData(self._fab_profile.count() - 1,
+                                          FAB_PROFILES[key].description,
+                                          Qt.ItemDataRole.ToolTipRole)
+        self._fab_profile.setCurrentText(DEFAULT_PROFILE)
+        self._fab_profile.currentIndexChanged.connect(self._rebuild)
+        bar.addWidget(self._fab_profile)
         bar.addStretch(1)
         self._export_btn = QPushButton("Export footprint + symbol…")
         self._export_btn.clicked.connect(self._on_export)
@@ -177,6 +202,7 @@ class MainWindow(QMainWindow):
             self._status.setStyleSheet(_ERR_STYLE)
             self._status.setText(f"⚠ {exc}")
             self._export_btn.setEnabled(self._geo is not None)
+            self._fab_banner.setVisible(False)
             return
 
         self._geo = geo
@@ -184,6 +210,23 @@ class MainWindow(QMainWindow):
         self._export_btn.setEnabled(True)
         self._status.setStyleSheet(_OK_STYLE)
         self._status.setText(_summary(geo))
+        self._update_fab_banner(geo)
+
+    def _update_fab_banner(self, geo: WidgetGeometry) -> None:
+        """Re-check the geometry against the selected fab profile and show issues."""
+        profile = self._fab_profile.currentText()
+        violations = check_fab(geo.params, profile)
+        if not violations:
+            self._fab_banner.setVisible(False)
+            return
+        items = "; ".join(
+            f"{v.feature} {v.value:.3f} < {v.limit:.3f} mm" for v in violations
+        )
+        plural = "issue" if len(violations) == 1 else "issues"
+        self._fab_banner.setText(
+            f"⚠ {len(violations)} fab {plural} vs '{profile}': {items}"
+        )
+        self._fab_banner.setVisible(True)
 
     def export_to(self, directory: Path) -> tuple[Path, Path]:
         """Write the current geometry's footprint + symbol into *directory*.

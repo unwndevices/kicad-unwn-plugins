@@ -286,3 +286,46 @@ def test_trackpad_export_matches_preview(qapp, tmp_path):
     assert sym_path.read_text() == symbol.trackpad_symbol_lib_text(geo)
     # One distinct pad number per Rx/Tx line, but many pads (multi-layer nets).
     assert fp_path.read_text().count("(pad ") > len(geo.nets)
+
+
+# --------------------------------------------------------------------------- #
+# fab-rule warning banner
+# --------------------------------------------------------------------------- #
+def test_fab_banner_hidden_for_clean_default(qapp):
+    from captouch.gui.app import MainWindow
+
+    # Default slider on the default profile clears every rule → no banner.
+    # (isVisibleTo reflects the widget's own flag; the offscreen window is unshown.)
+    win = MainWindow()
+    assert win._fab_profile.currentText() == "default"
+    assert not win._fab_banner.isVisibleTo(win)
+
+
+def test_fab_banner_appears_when_profile_tightens(qapp):
+    from captouch.gui.app import MainWindow
+
+    win = MainWindow()
+    win._on_widget_changed(2)  # trackpad: its 0.15 mm annular trips OSH Park
+    assert not win._fab_banner.isVisibleTo(win)  # still clean on the default profile
+
+    win._fab_profile.setCurrentText("oshpark")  # fires currentIndexChanged → rebuild
+    assert win._fab_banner.isVisibleTo(win)
+    assert "annular ring" in win._fab_banner.text()
+
+    win._fab_profile.setCurrentText("default")  # back to a profile it clears
+    assert not win._fab_banner.isVisibleTo(win)
+
+
+def test_fab_banner_hidden_on_invalid_geometry(qapp):
+    from captouch.gui.app import MainWindow
+
+    win = MainWindow()
+    win._on_widget_changed(2)
+    win._fab_profile.setCurrentText("oshpark")
+    assert win._fab_banner.isVisibleTo(win)
+
+    # Drive the trackpad into an invalid state (gap too wide for the pitch).
+    win.panel.set_params(TrackpadParams(diamond_pitch=2.0, diamond_gap=2.0))
+    win._rebuild()
+    assert win._status.text().startswith("⚠")  # error shown
+    assert not win._fab_banner.isVisibleTo(win)  # banner cleared, no valid geometry
