@@ -64,16 +64,18 @@ MASK_SHAPES = ("rect", "rrect", "circle")
 #:
 #: * ``"inscribe"`` — keep a diamond only when its **centre** is inside the mask,
 #:   then clip; rim diamonds are kept whole or dropped whole, so the copper
-#:   approximates the curve as a chunky inscribed lattice and every surviving
-#:   channel stays ~half-present (no runt partials, nothing to disable).
+#:   approximates the curve as a chunky inscribed lattice (every survivor stays
+#:   ~half-present, so no runt slivers).
 #: * ``"conform"`` — clip **every** diamond/neck/strap to the mask boundary so the
-#:   copper edge follows the curve exactly (Azoteq AZD068 §6, Fig 6.3). Rim
-#:   diamonds become cut *partial channels*; the build keeps them all and reports
-#:   which fall below :data:`DISABLE_AREA_FRACTION` of their full F.Cu area so they
-#:   can be disabled in firmware.
+#:   copper edge follows the curve exactly (Azoteq AZD068 §6, Fig 6.3), cutting the
+#:   rim diamonds into *partial channels*.
 #:
-#: For ``mask_shape == "rect"`` the two are identical (the box clips nothing the
-#: lattice doesn't already terminate on), so ``clip_mode`` is a no-op there.
+#: Either way a curved mask reduces some edge channels' electrode area (inscribe by
+#: dropping whole rim diamonds, conform by cutting them); the build reports which
+#: keep less than :data:`DISABLE_AREA_FRACTION` of their full area so they can be
+#: disabled in firmware. For ``mask_shape == "rect"`` the two modes are identical
+#: (the box clips nothing the lattice doesn't already terminate on) and every
+#: channel is full, so ``clip_mode`` is a no-op there.
 CLIP_MODES = ("inscribe", "conform")
 
 #: A ``conform`` channel keeping less than this fraction of its full (rect-mask)

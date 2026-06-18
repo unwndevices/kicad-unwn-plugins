@@ -183,6 +183,100 @@ def test_curved_mask_clips_corner_copper():
     assert total_fcu(circ) < total_fcu(rr)      # a disk removes more than a fillet
 
 
+# -- conform clip mode (rim diamonds cut to the curve, Azoteq AZD068 §6) ---- #
+def _total_fcu(geo):
+    return sum(p.area for n in geo.nets for p in n.fcu)
+
+
+def test_conform_fills_more_copper_than_inscribe():
+    # Cutting rim diamonds to the curve keeps copper that inscribe drops whole, so
+    # conform leaves strictly more F.Cu and reaches closer to the mask radius.
+    kw = dict(num_rows=7, num_cols=7, diamond_pitch=5.0, mask_shape="circle")
+    inscribe = build_trackpad(TrackpadParams(**kw, clip_mode="inscribe"))
+    conform = build_trackpad(TrackpadParams(**kw, clip_mode="conform"))
+    assert _total_fcu(conform) > _total_fcu(inscribe)
+    r = conform.params.effective_radius
+    reach = max(abs(v) for n in conform.nets for p in n.fcu for v in p.bounds)
+    assert reach > 0.95 * r  # copper extends out to ~the mask boundary
+
+
+def test_conform_rx_rows_single_piece_tx_fully_bridged():
+    # Connectivity survives the cut: each Rx row stays one galvanic F.Cu piece and
+    # each Tx column's surviving diamonds are joined by (diamonds-1) B.Cu straps.
+    geo = build_trackpad(TrackpadParams(num_rows=7, num_cols=7, diamond_pitch=5.0,
+                                        mask_shape="circle", clip_mode="conform"))
+    for n in geo.rx_nets:
+        assert len(n.fcu) == 1
+    for n in geo.tx_nets:
+        assert len(n.bcu) == max(0, len(n.fcu) - 1)
+        assert len(n.vias) == 2 * len(n.bcu)
+
+
+def test_conform_vias_land_on_their_nets_copper():
+    geo = build_trackpad(TrackpadParams(num_rows=7, num_cols=7, diamond_pitch=5.0,
+                                        mask_shape="circle", clip_mode="conform"))
+    for n in geo.tx_nets:
+        fcu = unary_union(n.fcu)
+        bcu = unary_union(n.bcu)
+        for v in n.vias:
+            p = Point(*v.at)
+            assert fcu.distance(p) < 1e-6
+            assert bcu.distance(p) < 1e-6
+
+
+def test_conform_copper_stays_inside_the_mask():
+    p = TrackpadParams(num_rows=7, num_cols=7, diamond_pitch=5.0,
+                       mask_shape="circle", clip_mode="conform")
+    geo = build_trackpad(p)
+    r = p.effective_radius
+    for n in geo.nets:
+        for poly in [*n.fcu, *n.bcu]:
+            assert poly.bounds[0] >= -r - 0.05 and poly.bounds[2] <= r + 0.05
+            assert poly.bounds[1] >= -r - 0.05 and poly.bounds[3] <= r + 0.05
+
+
+def test_conform_reports_partial_channels():
+    kw = dict(num_rows=7, num_cols=7, diamond_pitch=5.0, mask_shape="circle")
+    conform = build_trackpad(TrackpadParams(**kw, clip_mode="conform"))
+    partials = conform.partial_channels()
+    # The four edge rows/cols lose ~half their area → flagged for disabling.
+    assert {name for name, _ in partials} >= {"Rx1", "Rx7", "Tx1", "Tx7"}
+    assert all(frac < 0.5 for _, frac in partials)
+    # The central channels keep most of their copper.
+    central = next(n for n in conform.rx_nets if n.pin_name == "Rx4")
+    assert central.area_fraction > 0.9
+
+
+def test_rect_mask_has_no_partial_channels():
+    # A rect mask clips nothing, so every channel is a full (1.0) channel.
+    geo = build_trackpad(TrackpadParams(num_rows=5, num_cols=5))
+    assert geo.partial_channels() == []
+    assert all(n.area_fraction == 1.0 for n in geo.nets)
+
+
+def test_conform_area_fraction_bounds():
+    geo = build_trackpad(TrackpadParams(num_rows=6, num_cols=6, diamond_pitch=5.0,
+                                        mask_shape="circle", clip_mode="conform"))
+    for n in geo.nets:
+        assert 0.0 < n.area_fraction <= 1.0
+
+
+def test_conform_is_a_noop_for_rect_mask():
+    # A rect mask clips nothing the lattice doesn't already terminate on, so conform
+    # and inscribe coincide and every channel stays a full (1.0) channel.
+    a = build_trackpad(TrackpadParams(num_rows=4, num_cols=5, clip_mode="inscribe"))
+    b = build_trackpad(TrackpadParams(num_rows=4, num_cols=5, clip_mode="conform"))
+    assert a.bounds == b.bounds
+    assert _total_fcu(a) == pytest.approx(_total_fcu(b))
+    assert all(n.area_fraction == 1.0 for n in b.nets)
+
+
+def test_conform_elongated_circle_errors():
+    with pytest.raises(TrackpadError, match="outside the circle mask"):
+        build_trackpad(TrackpadParams(num_rows=3, num_cols=8,
+                                      mask_shape="circle", clip_mode="conform"))
+
+
 def test_rounded_rect_points_form_valid_polygon():
     pts = rounded_rect_points(-5.0, -4.0, 5.0, 4.0, 1.5)
     poly = Polygon(pts)
