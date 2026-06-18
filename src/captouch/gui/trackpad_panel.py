@@ -53,8 +53,10 @@ class TrackpadPanel(PanelBase):
 
         # Matrix.
         self.name = QLineEdit()
-        self.num_rows = self._spin(3, 16, 1)
-        self.num_cols = self._spin(3, 16, 1)
+        # No upper cap on the matrix (large pads are allowed); 2 is the structural
+        # floor for a 2-D XY matrix. 999 is just the spin box's practical ceiling.
+        self.num_rows = self._spin(2, 999, 1)
+        self.num_cols = self._spin(2, 999, 1)
         matrix_box = QGroupBox("Matrix")
         mf = QFormLayout(matrix_box)
         mf.addRow("Name", self.name)
@@ -113,8 +115,8 @@ class TrackpadPanel(PanelBase):
         self._set_tooltips(
             {
                 self.name: "Base name for the generated .kicad_mod / .kicad_sym files.",
-                self.num_rows: "Rx (sense) rows on F.Cu, 3–16. R×C ≤ 100 nodes total.",
-                self.num_cols: "Tx (drive) columns bridged on B.Cu, 3–16.",
+                self.num_rows: "Rx (sense) rows on F.Cu (≥ 2; no upper cap).",
+                self.num_cols: "Tx (drive) columns bridged on B.Cu (≥ 2; no upper cap).",
                 self.diamond_pitch: "Row/column centre spacing P (mm).",
                 self.diamond_gap: "Copper-to-copper gap A (mm) between diamonds.",
                 self.bridge_width: "F.Cu neck / B.Cu strap width (mm) at a Tx bridge.",

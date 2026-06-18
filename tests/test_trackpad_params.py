@@ -44,17 +44,17 @@ def test_trackpad_error_is_a_slider_error():
     assert issubclass(TrackpadError, SliderError)
 
 
-@pytest.mark.parametrize(
-    "field,value", [("num_rows", 2), ("num_cols", 2), ("num_rows", 17), ("num_cols", 17)]
-)
-def test_reject_line_counts_out_of_range(field, value):
-    with pytest.raises(TrackpadError, match="3..16"):
+@pytest.mark.parametrize("field,value", [("num_rows", 1), ("num_cols", 1), ("num_rows", 0)])
+def test_reject_line_counts_below_floor(field, value):
+    with pytest.raises(TrackpadError, match=">= 2"):
         validate_trackpad(TrackpadParams(**{field: value}))
 
 
-def test_reject_too_many_nodes():
-    with pytest.raises(TrackpadError, match="node"):
-        validate_trackpad(TrackpadParams(num_rows=16, num_cols=16))
+@pytest.mark.parametrize("rows,cols", [(2, 2), (16, 16), (60, 40)])
+def test_large_and_minimal_matrices_validate(rows, cols):
+    # No upper cap: a minimal 2x2 and a 60x40 (2400-node, >100) pad both validate.
+    p = TrackpadParams(num_rows=rows, num_cols=cols)
+    assert validate_trackpad(p) is p
 
 
 def test_reject_gap_too_wide_for_pitch():

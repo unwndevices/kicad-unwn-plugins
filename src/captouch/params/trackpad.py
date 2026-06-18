@@ -61,11 +61,12 @@ __all__ = [
 #: conservative fab floor (Infineon AN85951 §7.4.9 places vias at the pad edge).
 MIN_ANNULAR = 0.1
 
-#: Hard limits on the matrix dimensions (Microchip AT11849: 3–16 rows/columns,
-#: <=100 total nodes).
-MIN_LINES = 3
-MAX_LINES = 16
-MAX_NODES = 100
+#: Structural floor on the matrix dimensions: a true XY matrix needs at least two
+#: sense and two drive lines (one line per axis is a 1-D slider, not a pad). There
+#: is **no upper cap** — Microchip AT11849 recommends 3–16 rows/columns and <=100
+#: nodes for a touch *surface*, but those are application guidance, not geometry
+#: limits, so large pads (e.g. a 60x40 panel) are allowed.
+MIN_LINES = 2
 
 #: Valid outer-mask outlines the diamond matrix can be shaped to.
 MASK_SHAPES = ("rect", "rrect", "circle")
@@ -112,10 +113,11 @@ class TrackpadParams:
     ----------
     num_rows:
         Number of **Rx (sense)** rows — horizontal, continuous-on-F.Cu electrode
-        lines. ``3``..``16`` (Microchip AT11849).
+        lines. ``>= 2`` (no upper cap; Microchip AT11849 *recommends* 3–16 for a
+        touch surface, but that is application guidance, not a geometry limit).
     num_cols:
         Number of **Tx (drive)** columns — vertical, B.Cu-bridged electrode lines.
-        ``3``..``16``. For lowest sense-line noise keep ``num_rows <= num_cols``
+        ``>= 2``. For lowest sense-line noise keep ``num_rows <= num_cols``
         (#Rx <= #Tx; guidelines §4.3) — recommended, not enforced.
     diamond_pitch:
         Row/column centre-to-centre spacing ``P``. ~5 mm suits an 8 mm finger so a
@@ -259,15 +261,8 @@ def validate_trackpad(p: TrackpadParams) -> TrackpadParams:
     require_finite(p, TrackpadError)
     validate_support(p, TrackpadError)
     for field, val in (("num_rows", p.num_rows), ("num_cols", p.num_cols)):
-        if not MIN_LINES <= val <= MAX_LINES:
-            raise TrackpadError(
-                f"{field} must be {MIN_LINES}..{MAX_LINES} (Microchip AT11849), got {val}"
-            )
-    if p.num_nodes > MAX_NODES:
-        raise TrackpadError(
-            f"num_rows·num_cols = {p.num_nodes} exceeds the {MAX_NODES}-node limit "
-            f"(Microchip AT11849); reduce num_rows or num_cols"
-        )
+        if val < MIN_LINES:
+            raise TrackpadError(f"{field} must be >= {MIN_LINES} for a 2-D XY matrix, got {val}")
     if p.diamond_pitch <= 0:
         raise TrackpadError(f"diamond_pitch must be > 0, got {p.diamond_pitch}")
     if p.diamond_gap <= 0:

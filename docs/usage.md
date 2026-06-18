@@ -99,7 +99,9 @@ captouch trackpad --num-rows 7 --num-cols 7 --mask-shape circle --clip-mode conf
 captouch trackpad --mask-shape rrect --corner-radius 4
 ```
 
-Trackpad-specific: `--num-rows` (Rx) × `--num-cols` (Tx), each 3–16 (≤100 nodes);
+Trackpad-specific: `--num-rows` (Rx) × `--num-cols` (Tx), each ≥ 2 with no upper
+cap (3–16 / ≤100 nodes is AT11849's *recommendation* for a touch surface, not a
+hard limit, so large pads are allowed);
 `--diamond-pitch`, `--diamond-gap`; `--bridge-width` (F.Cu neck / B.Cu strap) and
 `--via-drill` / `--via-diameter` for the cross-layer bridge vias. Tx columns are
 bridged on **B.Cu**, so the design needs two copper layers. The connecting necks

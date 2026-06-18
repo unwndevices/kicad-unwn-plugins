@@ -35,6 +35,15 @@ def test_net_counts(rows, cols):
     assert geo.params.num_nodes == rows * cols
 
 
+@pytest.mark.parametrize("rows,cols", [(2, 2), (20, 18)])
+def test_builds_below_floor_and_above_old_caps(rows, cols):
+    # The 3-16 row/col and 100-node caps are gone: a minimal 2x2 and a 20x18
+    # (360-node, lines > 16) matrix both build a full net per line.
+    geo = build_trackpad(TrackpadParams(num_rows=rows, num_cols=cols))
+    assert len(geo.nets) == rows + cols
+    assert all(n.fcu for n in geo.nets)  # every line carries copper
+
+
 @pytest.mark.parametrize("rows,cols", SIZES)
 def test_numbering_and_pin_names(rows, cols):
     geo = build_trackpad(TrackpadParams(num_rows=rows, num_cols=cols))

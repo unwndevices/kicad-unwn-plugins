@@ -409,7 +409,7 @@ Derived geometry: `circumference = π × (outer_diameter − ring_width)`; `segm
 | `sensing_mode` | mutual (CSX) | self (SSD) / mutual (DSD) | §4.1 |
 | `diamond_pitch` | 5 mm | 3.8–10 mm | §4.2 |
 | `diamond_gap` | 0.3 mm | 0.1–1 mm (copper = etch min) | §4.2 |
-| `num_rows` × `num_cols` | derived: `panel / pitch` | 3–16 each, ≤100 nodes | §4.3 |
+| `num_rows` × `num_cols` | derived: `panel / pitch` | ≥2 each (3–16 / ≤100 nodes recommended, not enforced) | §4.3 |
 | `axis_assignment` | Rx on shorter axis (#Rx ≤ #Tx) | — | §4.3 |
 | `edge_termination` | half-diamond on all edges | — | §4.3 |
 | `bridge_method` | vias to 2nd layer (default) / 0 Ω jumpers (single-layer copper) | — | §4.4 |
