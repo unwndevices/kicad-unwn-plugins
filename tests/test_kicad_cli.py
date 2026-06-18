@@ -257,6 +257,23 @@ def test_trackpad_conform_large_drc_clean(kw, tmp_path):
     assert report["unconnected_items"] == [], report["unconnected_items"]
 
 
+@pytest.mark.parametrize("w,h", [(28, 23), (52, 38)])
+def test_trackpad_panel_sized_drc_clean(w, h, tmp_path):
+    # Size-driven pads: the outline is pinned to the target, so the rounded lattice
+    # overflows it (rim diamonds trimmed by the rect-box clip) on at least one axis.
+    # The cut partials must stay DRC-clean and fully connected — vias still land on
+    # copper, no floating rim copper — exactly as for a conform curved mask.
+    # 28x23 trims both axes; 52x38 trims height while the width insets (empty margin).
+    p = TrackpadParams.from_size(w, h, diamond_pitch=5.0, name="CT_Trackpad")
+    assert p.lattice_width > p.width or p.lattice_height > p.height  # the lattice is trimmed
+    geo = build_trackpad(p)
+    board = tmp_path / "board.kicad_pcb"
+    board.write_text(widget_board_text(geo, nets=trackpad_net_map(geo)))
+    report = _drc(board, tmp_path / "drc.json")
+    assert report["violations"] == [], report["violations"]
+    assert report["unconnected_items"] == [], report["unconnected_items"]
+
+
 def test_trackpad_drc_catches_undersized_gap(tmp_path):
     # Negative control: shrinking the gap (and neck) below the fab clearance MUST
     # be flagged — proving Rx and Tx sit on distinct nets and the gate is real.
