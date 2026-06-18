@@ -128,9 +128,10 @@ def test_fab_outline_follows_mask_shape():
 @pytest.mark.parametrize("shape,kw", [
     ("rect", {}), ("rrect", {"corner_radius": 2.0}), ("circle", {}),
 ])
-def test_courtyard_stays_rect_until_copper_is_clipped(shape, kw):
+def test_courtyard_follows_mask_shape(shape, kw):
     geo = build_trackpad(TrackpadParams(num_rows=4, num_cols=4, mask_shape=shape, **kw))
-    assert geo.courtyard_outline[0] == "rect"
+    assert geo.courtyard_outline[0] == shape
+    assert geo.courtyard_outline == geo.fab_primitives[0]  # same outline as F.Fab
 
 
 def test_clipped_copper_stays_inside_the_mask():

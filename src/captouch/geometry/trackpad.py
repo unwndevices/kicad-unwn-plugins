@@ -91,12 +91,12 @@ class TrackpadGeometry:
     def courtyard_outline(self) -> tuple:
         """Bounding shape the exporter expands by the courtyard margin.
 
-        Always the copper bounding rectangle: until the copper itself is clipped
-        to the mask, an inscribed rounded/round courtyard would under-bound the
-        rectangular copper's corners.
+        Follows ``mask_shape`` (the same outline as F.Fab): now that the copper is
+        clipped to the mask, a shaped courtyard bounds it tightly. The expanded
+        outline still encloses all copper — the circle uses the nominal mask
+        radius, which the clipped diamonds never exceed.
         """
-        minx, miny, maxx, maxy = self.bounds
-        return ("rect", minx, miny, maxx, maxy)
+        return self._mask_outline()
 
     def _mask_outline(self) -> tuple:
         """The mask outline primitive (``rect`` / ``rrect`` / ``circle``)."""
