@@ -29,6 +29,44 @@ def test_slider_default_writes_files_and_exits_zero(tmp_path):
     assert (tmp_path / "S.kicad_sym").exists()
 
 
+def test_save_params_and_from_params_round_trip(tmp_path):
+    out, regen, pj = tmp_path / "a", tmp_path / "b", tmp_path / "p.json"
+    rc = main(
+        [
+            "slider",
+            "--out",
+            str(out),
+            "--name",
+            "S",
+            "--num-segments",
+            "5",
+            "--save-params",
+            str(pj),
+        ]
+    )
+    assert rc == 0
+    assert pj.exists()
+    assert main(["from-params", str(pj), "--out", str(regen)]) == 0
+    # Regenerating from the saved params reproduces the files byte-for-byte.
+    assert (out / "S.kicad_mod").read_text() == (regen / "S.kicad_mod").read_text()
+    assert (out / "S.kicad_sym").read_text() == (regen / "S.kicad_sym").read_text()
+
+
+def test_from_params_dispatches_by_widget(tmp_path):
+    pj = tmp_path / "t.json"
+    main(["trackpad", "--out", str(tmp_path / "a"), "--name", "T", "--save-params", str(pj)])
+    assert main(["from-params", str(pj), "--out", str(tmp_path / "b")]) == 0
+    assert (tmp_path / "b" / "T.kicad_mod").exists()
+    assert (tmp_path / "b" / "T.kicad_sym").exists()
+
+
+def test_from_params_bad_widget_errors(tmp_path, capsys):
+    bad = tmp_path / "bad.json"
+    bad.write_text('{"widget": "octopad", "params": {}}')
+    assert main(["from-params", str(bad), "--out", str(tmp_path)]) == 2
+    assert "error" in capsys.readouterr().out
+
+
 def test_list_fab_profiles_lists_and_exits_zero(capsys):
     rc = main(["trackpad", "--list-fab-profiles"])
     assert rc == 0

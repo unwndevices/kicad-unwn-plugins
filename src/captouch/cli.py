@@ -30,7 +30,10 @@ from .params import (
     SliderParams,
     TrackpadParams,
     WheelParams,
+    WidgetParams,
     check_fab,
+    params_from_json,
+    params_to_json,
 )
 
 SPIKE_NAME = "CT_Spike_Pad"
@@ -86,6 +89,14 @@ def _report_fab(violations, profile_key: str, *, strict: bool) -> None:
             "  refusing to generate under --strict — relax the geometry, pick a "
             "finer --fab-profile, or drop --strict"
         )
+
+
+def _maybe_save_params(args: argparse.Namespace, params: WidgetParams) -> None:
+    """Write the resolved params as JSON if ``--save-params`` was given."""
+    path = getattr(args, "save_params", None)
+    if path is not None:
+        path.write_text(params_to_json(params), encoding="utf-8")
+        print(f"wrote {path}")
 
 
 # --------------------------------------------------------------------------- #
@@ -144,6 +155,7 @@ def _slider(args: argparse.Namespace) -> int:
     sym_path = args.out / f"{params.name}.kicad_sym"
     fp_path.write_text(footprint.slider_footprint_text(geo), encoding="utf-8")
     sym_path.write_text(symbol.slider_symbol_lib_text(geo), encoding="utf-8")
+    _maybe_save_params(args, params)
 
     minx, miny, maxx, maxy = geo.bounds
     print(f"wrote {fp_path}")
@@ -188,6 +200,9 @@ def _add_slider_parser(sub: argparse._SubParsersAction) -> None:
     p.add_argument("--tip-radius", type=float, help="chevron tooth-tip rounding (mm)")
     p.add_argument(
         "--relax-finger-constraint", action="store_true", help="skip the W+2A=finger check"
+    )
+    p.add_argument(
+        "--save-params", type=Path, metavar="FILE", help="also write the resolved params as JSON"
     )
     _add_fab_args(p)
     p.set_defaults(func=_slider)
@@ -249,6 +264,7 @@ def _wheel(args: argparse.Namespace) -> int:
     sym_path = args.out / f"{params.name}.kicad_sym"
     fp_path.write_text(footprint.wheel_footprint_text(geo), encoding="utf-8")
     sym_path.write_text(symbol.wheel_symbol_lib_text(geo), encoding="utf-8")
+    _maybe_save_params(args, params)
 
     print(f"wrote {fp_path}")
     print(f"wrote {sym_path}")
@@ -294,6 +310,9 @@ def _add_wheel_parser(sub: argparse._SubParsersAction) -> None:
     p.add_argument("--arc-resolution", type=int, help="circle tessellation: segments per 90deg")
     p.add_argument(
         "--relax-finger-constraint", action="store_true", help="skip the W+2A=finger check"
+    )
+    p.add_argument(
+        "--save-params", type=Path, metavar="FILE", help="also write the resolved params as JSON"
     )
     _add_fab_args(p)
     p.set_defaults(func=_wheel)
@@ -357,6 +376,7 @@ def _trackpad(args: argparse.Namespace) -> int:
     sym_path = args.out / f"{params.name}.kicad_sym"
     fp_path.write_text(footprint.trackpad_footprint_text(geo), encoding="utf-8")
     sym_path.write_text(symbol.trackpad_symbol_lib_text(geo), encoding="utf-8")
+    _maybe_save_params(args, params)
 
     print(f"wrote {fp_path}")
     print(f"wrote {sym_path}")
@@ -426,8 +446,68 @@ def _add_trackpad_parser(sub: argparse._SubParsersAction) -> None:
         help="circle mask radius (mm; with --mask-shape circle; "
         "default = inscribed 0.5·min(width,height))",
     )
+    p.add_argument(
+        "--save-params", type=Path, metavar="FILE", help="also write the resolved params as JSON"
+    )
     _add_fab_args(p)
     p.set_defaults(func=_trackpad)
+
+
+# --------------------------------------------------------------------------- #
+# from-params: regenerate from a saved JSON parameter set
+# --------------------------------------------------------------------------- #
+def _from_params(args: argparse.Namespace) -> int:
+    try:
+        params = params_from_json(args.file.read_text(encoding="utf-8"))
+    except (OSError, ValueError) as exc:
+        print(f"error: {exc}")
+        return 2
+
+    try:
+        if isinstance(params, WheelParams):
+            wgeo = build_wheel(params)
+            fp_text = footprint.wheel_footprint_text(wgeo)
+            sym_text = symbol.wheel_symbol_lib_text(wgeo)
+        elif isinstance(params, TrackpadParams):
+            tgeo = build_trackpad(params)
+            fp_text = footprint.trackpad_footprint_text(tgeo)
+            sym_text = symbol.trackpad_symbol_lib_text(tgeo)
+        else:
+            sgeo = build_slider(params)
+            fp_text = footprint.slider_footprint_text(sgeo)
+            sym_text = symbol.slider_symbol_lib_text(sgeo)
+    except SliderError as exc:
+        print(f"error: {exc}")
+        return 2
+
+    violations = check_fab(params, args.fab_profile)
+    if violations and args.strict:
+        _report_fab(violations, args.fab_profile, strict=True)
+        return 3
+
+    args.out.mkdir(parents=True, exist_ok=True)
+    fp_path = args.out / f"{params.name}.kicad_mod"
+    sym_path = args.out / f"{params.name}.kicad_sym"
+    fp_path.write_text(fp_text, encoding="utf-8")
+    sym_path.write_text(sym_text, encoding="utf-8")
+    print(f"wrote {fp_path}")
+    print(f"wrote {sym_path}")
+    _report_fab(violations, args.fab_profile, strict=False)
+    return 0
+
+
+def _add_from_params_parser(sub: argparse._SubParsersAction) -> None:
+    p = sub.add_parser("from-params", help="regenerate a widget from a saved JSON parameter set")
+    p.add_argument("file", type=Path, help="parameter JSON (as written by --save-params)")
+    p.add_argument(
+        "-o",
+        "--out",
+        type=Path,
+        default=Path("examples"),
+        help="output directory (default: ./examples)",
+    )
+    _add_fab_args(p)
+    p.set_defaults(func=_from_params)
 
 
 # --------------------------------------------------------------------------- #
@@ -502,6 +582,7 @@ def main(argv: list[str] | None = None) -> int:
     _add_slider_parser(sub)
     _add_wheel_parser(sub)
     _add_trackpad_parser(sub)
+    _add_from_params_parser(sub)
     _add_gui_parser(sub)
     _add_spike_parser(sub)
 

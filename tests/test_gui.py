@@ -393,3 +393,28 @@ def test_fab_banner_hidden_on_invalid_geometry(qapp):
     win._rebuild()
     assert win._status.text().startswith("⚠")  # error shown
     assert not win._fab_banner.isVisibleTo(win)  # banner cleared, no valid geometry
+
+
+def test_load_params_switches_widget_and_loads(qapp):
+    from captouch.gui.app import MainWindow
+
+    win = MainWindow()  # starts on the slider panel
+    win.load_params(TrackpadParams(num_rows=4, num_cols=5, name="CT_T"))
+    assert isinstance(win._geo, TrackpadGeometry)  # selector switched to trackpad
+    got = win.panel.params()
+    assert (got.num_rows, got.num_cols) == (4, 5)
+
+
+def test_gui_save_load_params_round_trip(qapp):
+    from captouch.gui.app import MainWindow
+    from captouch.params import WheelParams, params_from_json, params_to_json
+
+    win = MainWindow()
+    win._on_widget_changed(1)  # wheel
+    win.panel.set_params(WheelParams(num_segments=6, name="CT_W"))
+    saved = params_to_json(win.panel.params())
+
+    other = MainWindow()
+    other.load_params(params_from_json(saved))
+    assert isinstance(other._geo, WheelGeometry)
+    assert other.panel.params().num_segments == 6

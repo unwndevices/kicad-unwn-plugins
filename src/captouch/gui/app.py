@@ -32,7 +32,16 @@ from PySide6.QtWidgets import (
 from ..export import footprint, symbol
 from ..geometry import TrackpadGeometry, WheelGeometry
 from ..geometry._base import GeometryError
-from ..params import DEFAULT_PROFILE, FAB_PROFILES, SliderError, check_fab
+from ..params import (
+    DEFAULT_PROFILE,
+    FAB_PROFILES,
+    SliderError,
+    TrackpadParams,
+    WheelParams,
+    check_fab,
+    params_from_json,
+    params_to_json,
+)
 from .panel import ParamPanel
 from .preview import LAYERS, PreviewView, WidgetGeometry
 from .trackpad_panel import TrackpadPanel
@@ -120,6 +129,7 @@ class MainWindow(QMainWindow):
         selector = QComboBox()
         selector.addItems([label for label, _ in _WIDGETS])
         selector.currentIndexChanged.connect(self._on_widget_changed)
+        self._selector = selector  # kept so Load-params can switch the active widget
 
         left = QWidget()
         ll = QVBoxLayout(left)
@@ -192,6 +202,12 @@ class MainWindow(QMainWindow):
         self._fab_profile.currentIndexChanged.connect(self._rebuild)
         bar.addWidget(self._fab_profile)
         bar.addStretch(1)
+        load_btn = QPushButton("Load params…")
+        load_btn.clicked.connect(self._on_load_params)
+        bar.addWidget(load_btn)
+        save_btn = QPushButton("Save params…")
+        save_btn.clicked.connect(self._on_save_params)
+        bar.addWidget(save_btn)
         self._export_btn = QPushButton("Export footprint + symbol…")
         self._export_btn.clicked.connect(self._on_export)
         bar.addWidget(self._export_btn)
@@ -264,6 +280,45 @@ class MainWindow(QMainWindow):
         fp_path, sym_path = self.export_to(Path(directory))
         self._status.setStyleSheet(_OK_STYLE)
         self._status.setText(f"Exported {fp_path.name} and {sym_path.name} → {directory}")
+
+    # -- parameter save / load ---------------------------------------------- #
+    @staticmethod
+    def _widget_index(p) -> int:
+        """Selector index (matching _WIDGETS order) for a params object."""
+        if isinstance(p, TrackpadParams):
+            return 2
+        if isinstance(p, WheelParams):
+            return 1
+        return 0
+
+    def _on_save_params(self) -> None:
+        p = self.panel.params()
+        path, _ = QFileDialog.getSaveFileName(
+            self, "Save parameters", f"{p.name}.json", "JSON (*.json)"
+        )
+        if not path:
+            return
+        Path(path).write_text(params_to_json(p), encoding="utf-8")
+        self._status.setStyleSheet(_OK_STYLE)
+        self._status.setText(f"Saved parameters → {path}")
+
+    def load_params(self, p) -> None:
+        """Switch to *p*'s widget, load it into that panel, and rebuild."""
+        self._selector.setCurrentIndex(self._widget_index(p))  # switches the active panel
+        self.panel.set_params(p)
+        self._rebuild()
+
+    def _on_load_params(self) -> None:
+        path, _ = QFileDialog.getOpenFileName(self, "Load parameters", "", "JSON (*.json)")
+        if not path:
+            return
+        try:
+            p = params_from_json(Path(path).read_text(encoding="utf-8"))
+        except (OSError, ValueError) as exc:
+            self._status.setStyleSheet(_ERR_STYLE)
+            self._status.setText(f"⚠ could not load parameters: {exc}")
+            return
+        self.load_params(p)
 
 
 def run(argv: list[str] | None = None) -> int:
