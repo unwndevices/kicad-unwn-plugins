@@ -139,3 +139,125 @@ def widget_board_text(
 
 # Back-compat alias: the slider tests call this name.
 slider_board_text = widget_board_text
+
+
+# --------------------------------------------------------------------------- #
+# Support copper (Phase 8): lift embedded zones to board level so DRC fills them
+# --------------------------------------------------------------------------- #
+# kicad-cli `pcb drc --refill-zones` only refills *board-level* zones, not zones
+# embedded in a footprint. To verify the support-copper geometry (fill, clearance,
+# and that the GND net-tie actually ties the filled pour), the test board pulls
+# the footprint's zones out, translates them to the placed position, stamps the
+# GND net, and drops them at board level — where the filler runs for real.
+def _translate(node: list, dx: float, dy: float) -> list:
+    """Recursively shift every ``(xy x y)`` in *node* by (dx, dy)."""
+    out: list = []
+    for c in node:
+        if isinstance(c, list):
+            if sexpr.head(c) == "xy":
+                out.append([Sym("xy"), c[1] + dx, c[2] + dy])
+            else:
+                out.append(_translate(c, dx, dy))
+        else:
+            out.append(c)
+    return out
+
+
+def _stamp_zone_net(zone: list, index: int, name: str) -> list:
+    """Rewrite a zone's ``(net …)`` / ``(net_name …)`` to a real board net."""
+    out: list = []
+    for c in zone:
+        if isinstance(c, list) and sexpr.head(c) == "net":
+            out.append([Sym("net"), index])
+        elif isinstance(c, list) and sexpr.head(c) == "net_name":
+            out.append([Sym("net_name"), name])
+        else:
+            out.append(c)
+    return out
+
+
+_PROBE_NUMBER = "GNDPROBE"
+
+
+def _probe_pad(at: tuple[float, float], diameter: float) -> list:
+    """A thru-hole GND pad (geometry coords) injected into the widget footprint — a
+    second GND point joinable only via the filled pour, so connectivity is a real
+    check. Sized like the net-tie (≥ hatch pitch) so it reliably overlaps a hatched
+    pour; being part of the widget footprint it sits in its own courtyard (no
+    ``pth_inside_courtyard``)."""
+    return [
+        Sym("pad"),
+        _PROBE_NUMBER,
+        Sym("thru_hole"),
+        Sym("circle"),
+        [Sym("at"), at[0], at[1]],
+        [Sym("size"), diameter, diameter],
+        [Sym("drill"), 0.3],
+        [Sym("layers"), "*.Cu", "*.Mask"],
+        [Sym("remove_unused_layers"), Sym("no")],
+    ]
+
+
+def support_board_text(
+    geo,
+    *,
+    with_zones: bool = True,
+    probe_at: tuple[float, float] | None = None,
+    at: tuple[float, float] = (100.0, 100.0),
+    margin: float = 10.0,
+) -> str:
+    """Board placing *geo* with electrodes on distinct nets and the support-copper
+    zones lifted to board level on the GND net (index 1).
+
+    ``with_zones=False`` omits the lifted zones (negative control: the GND net-tie
+    + *probe_at* pad can then only be unconnected). ``probe_at`` (geometry coords)
+    injects a second GND thru-hole pad, reachable only through the filled pour.
+    """
+    from captouch.geometry import net_tie_number
+
+    # Each electrode gets a unique synthetic net name ("N<pad>") — never "GND", so
+    # the slider's grounded dummy pads (pin name "GND") don't merge with the support
+    # GND net by name. Only the net-tie + lifted zones are GND.
+    gnd = 1
+    if isinstance(geo, TrackpadGeometry):
+        fp_node = footprint.trackpad_footprint(geo)
+        items = [n.pad_number for n in geo.nets]
+    else:
+        fp_node = footprint.widget_footprint(geo)
+        items = [e.pad_number for e in geo.electrodes]
+    net_of = {pad: (i + 2, f"N{pad}") for i, pad in enumerate(items)}
+    tie = net_tie_number(geo)
+    if tie is not None:
+        net_of[tie] = (gnd, "GND")
+
+    zones = [c for c in fp_node if isinstance(c, list) and sexpr.head(c) == "zone"]
+    body = [c for c in fp_node if not (isinstance(c, list) and sexpr.head(c) == "zone")]
+    if probe_at is not None:  # inject the GND probe pad into the footprint body
+        net_of[_PROBE_NUMBER] = (gnd, "GND")
+        pdiam = max(0.6, geo.params.ground_hatch_pitch) if geo.params.ground_hatch else 0.6
+        body = [*body[:-1], _probe_pad(probe_at, pdiam), body[-1]]
+    fp = _embed(body, at, net_of)
+
+    extra: list = []
+    if with_zones:
+        extra += [_translate(_stamp_zone_net(z, gnd, "GND"), at[0], at[1]) for z in zones]
+
+    net_decls = [[Sym("net"), 0, ""]]
+    for index, name in sorted(set(net_of.values())):
+        net_decls.append([Sym("net"), index, name])
+
+    board = [
+        Sym("kicad_pcb"),
+        [Sym("version"), footprint.FOOTPRINT_VERSION],
+        [Sym("generator"), "kicad-captouch"],
+        [Sym("generator_version"), "0.1.0"],
+        [Sym("general"), [Sym("thickness"), 1.6]],
+        [Sym("paper"), "A4"],
+        _layers(),
+        [Sym("setup")],
+        *net_decls,
+        _edge_cuts(geo, at, margin),
+        fp,
+        *extra,
+    ]
+    return sexpr.dumps(board) + "\n"

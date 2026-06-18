@@ -262,9 +262,16 @@ def _zone(
 def _support_extra_nodes(sc: SupportCopper, params: SupportParams) -> list:
     """Zones + F.Mask aperture + GND net-tie pad for one widget's support copper."""
     nodes: list = []
-    # Net-tie pad first (a real component pad → maps to the GND symbol pin).
+    # Net-tie pad first (a real component pad → maps to the GND symbol pin). When a
+    # hatched ground pour is present the pad must span the mesh pitch — a pad wider
+    # than the hatch gap cannot fall entirely between lines, so it always overlaps
+    # copper and reliably ties the pour to GND (a smaller pad can land in a gap and
+    # leave the pour floating).
     number, at = sc.net_tie
-    nodes.append(via_pad(at, number=number, drill=NETTIE_DRILL, diameter=NETTIE_DIAMETER))
+    diameter = (
+        max(NETTIE_DIAMETER, params.ground_hatch_pitch) if params.ground_hatch else NETTIE_DIAMETER
+    )
+    nodes.append(via_pad(at, number=number, drill=NETTIE_DRILL, diameter=diameter))
     if sc.ground is not None:
         gap = round(params.ground_hatch_pitch - params.ground_hatch_width, 6)
         nodes.append(
@@ -305,6 +312,19 @@ def _fab_courtyard_nodes(geo: WidgetGeometry, sc: SupportCopper | None) -> tuple
     fab = [_emit_outline(p, layer="F.Fab", width=FAB_WIDTH) for p in sc.fab_outlines]
     courtyard = _fp_poly(sc.courtyard_pts, layer="F.CrtYd", width=COURTYARD_WIDTH)
     return fab, courtyard
+
+
+def _ref_val_y(miny: float, maxy: float, sc: SupportCopper | None) -> tuple[float, float]:
+    """Reference (top) / Value (bottom) silk Y positions.
+
+    Without support copper, just outside the electrode extent (unchanged). With it,
+    beyond the grown courtyard so the Reference silk never sits over the mask-opened
+    guard ring (a ``silk_over_copper`` violation otherwise).
+    """
+    if sc is None:
+        return miny - 1.5, maxy + 1.5
+    ys = [y for _, y in sc.courtyard_pts]
+    return min(ys) - 1.0, max(ys) + 1.0
 
 
 def _header(name: str, value: str, ref_at: float, val_at: float) -> list:
@@ -417,10 +437,8 @@ def widget_footprint(geo: ElectrodeGeometry) -> list:
     """
     name = geo.params.name
     minx, miny, maxx, maxy = geo.bounds
-    ref_y = miny - 1.5
-    val_y = maxy + 1.5
-
     sc = build_support(geo)
+    ref_y, val_y = _ref_val_y(miny, maxy, sc)
     fab, courtyard = _fab_courtyard_nodes(geo, sc)
     pads = [custom_polygon_pad(e.points, number=e.pad_number, at=e.anchor) for e in geo.electrodes]
     extra = _support_extra_nodes(sc, geo.params) if sc is not None else []
@@ -475,11 +493,10 @@ def trackpad_footprint(geo: TrackpadGeometry) -> list:
     """Build a footprint node for a trackpad from its :class:`TrackpadGeometry`."""
     name = geo.params.name
     minx, miny, maxx, maxy = geo.bounds
-    ref_y = miny - 1.5
-    val_y = maxy + 1.5
     p = geo.params
 
     sc = build_support(geo)
+    ref_y, val_y = _ref_val_y(miny, maxy, sc)
     fab, courtyard = _fab_courtyard_nodes(geo, sc)
 
     pads: list = []

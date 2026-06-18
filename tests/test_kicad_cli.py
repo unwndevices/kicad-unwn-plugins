@@ -11,10 +11,10 @@ import shutil
 import subprocess
 
 import pytest
-from _board import trackpad_net_map, widget_board_text
+from _board import support_board_text, trackpad_net_map, widget_board_text
 
 from captouch.export import footprint, symbol
-from captouch.geometry import build_slider, build_trackpad, build_wheel
+from captouch.geometry import build_slider, build_support, build_trackpad, build_wheel
 from captouch.params import SliderParams, TrackpadParams, WheelParams
 
 KICAD_CLI = shutil.which("kicad-cli")
@@ -41,17 +41,12 @@ def _run(*args):
     return subprocess.run([KICAD_CLI, *args], capture_output=True, text=True, check=False)
 
 
-def _drc(board_path, out_json):
-    proc = _run(
-        "pcb",
-        "drc",
-        "--format",
-        "json",
-        "--severity-all",
-        "--output",
-        str(out_json),
-        str(board_path),
-    )
+def _drc(board_path, out_json, *, refill=False):
+    args = ["pcb", "drc", "--format", "json", "--severity-all"]
+    if refill:  # required for any board carrying zones (the filler runs before DRC)
+        args.append("--refill-zones")
+    args += ["--output", str(out_json), str(board_path)]
+    proc = _run(*args)
     assert proc.returncode == 0, proc.stderr or proc.stdout
     return json.loads(out_json.read_text())
 
@@ -286,3 +281,71 @@ def test_trackpad_bridges_required_for_connectivity(tmp_path):
     board.write_text(widget_board_text(stripped, nets=trackpad_net_map(stripped)))
     report = _drc(board, tmp_path / "nobridge.json")
     assert report["unconnected_items"], "expected unconnected Tx diamonds without bridges"
+
+
+# --------------------------------------------------------------------------- #
+# support copper (Phase 8): hatched ground + guard / ESD ring
+# --------------------------------------------------------------------------- #
+# kicad-cli does not refill footprint-embedded zones, so support_board_text lifts
+# them to board level on the GND net; --refill-zones then fills them for real. An
+# empty `violations` proves the filled GND pour keeps clearance from the electrode
+# nets; an empty `unconnected_items` proves the GND net-tie + probe pad are bridged
+# by the fill (the geometry is correct and the tie works).
+def _probe(geo, sc):
+    """A point in the (ground or guard) pour but clear of the electrode area — a
+    second GND point reachable only through the filled pour."""
+    from shapely.geometry import box as _box
+
+    zone = sc.ground if sc.ground is not None else sc.guard
+    minx, miny, maxx, maxy = geo.bounds
+    safe = zone.difference(_box(minx, miny, maxx, maxy).buffer(0.5))  # outside the electrodes
+    p = safe.representative_point()
+    return (round(p.x, 4), round(p.y, 4))
+
+
+SUPPORT_CASES = [
+    ("slider_ground", build_slider, SliderParams(name="S", ground_hatch=True)),
+    ("slider_guard", build_slider, SliderParams(name="S", guard_ring=True)),
+    ("slider_both", build_slider, SliderParams(name="S", ground_hatch=True, guard_ring=True)),
+    ("wheel_both", build_wheel, WheelParams(name="W", ground_hatch=True, guard_ring=True)),
+    (
+        "trackpad_both",
+        build_trackpad,
+        TrackpadParams(name="T", num_rows=4, num_cols=5, ground_hatch=True, guard_ring=True),
+    ),
+    (
+        "trackpad_circle",
+        build_trackpad,
+        TrackpadParams(
+            name="T",
+            num_rows=4,
+            num_cols=4,
+            mask_shape="circle",
+            ground_hatch=True,
+            guard_ring=True,
+        ),
+    ),
+]
+
+
+@pytest.mark.parametrize("label,build,params", SUPPORT_CASES, ids=[c[0] for c in SUPPORT_CASES])
+def test_support_copper_drc_clean(label, build, params, tmp_path):
+    geo = build(params)
+    sc = build_support(geo)
+    board = tmp_path / "board.kicad_pcb"
+    board.write_text(support_board_text(geo, probe_at=_probe(geo, sc)))
+    report = _drc(board, tmp_path / "drc.json", refill=True)
+    assert report["violations"] == [], report["violations"]
+    assert report["unconnected_items"] == [], report["unconnected_items"]
+
+
+def test_support_pour_required_for_gnd_connectivity(tmp_path):
+    # Negative control: without the lifted GND pour, the net-tie and the probe pad
+    # are two isolated GND points → unconnected. Proves the fill (not something
+    # else) is what ties the support copper to GND.
+    geo = build_slider(SliderParams(name="S", ground_hatch=True, guard_ring=True))
+    sc = build_support(geo)
+    board = tmp_path / "board.kicad_pcb"
+    board.write_text(support_board_text(geo, with_zones=False, probe_at=_probe(geo, sc)))
+    report = _drc(board, tmp_path / "drc.json", refill=True)
+    assert report["unconnected_items"], "expected a floating GND probe without the pour"
