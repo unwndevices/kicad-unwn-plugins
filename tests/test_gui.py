@@ -272,6 +272,17 @@ def test_trackpad_preview_matches_geometry(qapp):
         assert win.preview.net_polygon_points(net.pad_number) == expected
 
 
+@pytest.mark.parametrize("shape,kw", [("rrect", {"corner_radius": 2.0}), ("circle", {})])
+def test_trackpad_masked_outline_renders(qapp, shape, kw):
+    from captouch.gui.preview import PreviewView
+
+    geo = build_trackpad(TrackpadParams(num_rows=4, num_cols=4, mask_shape=shape, **kw))
+    view = PreviewView()
+    view.set_geometry(geo)  # must not raise on the rrect/circle outline kinds
+    assert len(view._layer_items["fab"]) == 1
+    assert len(view._layer_items["courtyard"]) == 1
+
+
 def test_trackpad_export_matches_preview(qapp, tmp_path):
     from captouch.gui.app import MainWindow
 

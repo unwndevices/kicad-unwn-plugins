@@ -23,7 +23,7 @@ from typing import Union
 
 from ..export.footprint import COURTYARD_MARGIN
 from ..geometry import Electrode, SliderGeometry, TrackpadGeometry, WheelGeometry
-from ..geometry._base import polygon_points
+from ..geometry._base import polygon_points, rounded_rect_points
 
 WidgetGeometry = Union[SliderGeometry, WheelGeometry, TrackpadGeometry]
 
@@ -279,12 +279,17 @@ class PreviewView(QGraphicsView):
         self._layer_items[layer].append(item)
 
     def _add_primitive(self, prim: tuple, pen: QPen):
-        """Draw a ``("rect", …)`` / ``("circle", …)`` outline primitive."""
+        """Draw a ``("rect"|"rrect"|"circle", …)`` outline primitive."""
         kind = prim[0]
         no_fill = QBrush(Qt.BrushStyle.NoBrush)
         if kind == "rect":
             _, x1, y1, x2, y2 = prim
             return self._scene.addRect(QRectF(x1, y1, x2 - x1, y2 - y1), pen, no_fill)
+        if kind == "rrect":
+            _, x1, y1, x2, y2, r = prim
+            # Same vertex ring the exporter emits, so preview == output.
+            return self._scene.addPolygon(
+                _qpoly(rounded_rect_points(x1, y1, x2, y2, r)), pen, no_fill)
         if kind == "circle":
             _, cx, cy, r = prim
             return self._scene.addEllipse(QRectF(cx - r, cy - r, 2 * r, 2 * r), pen, no_fill)
@@ -296,6 +301,9 @@ class PreviewView(QGraphicsView):
         if kind == "rect":
             _, x1, y1, x2, y2 = prim
             return ("rect", x1 - margin, y1 - margin, x2 + margin, y2 + margin)
+        if kind == "rrect":
+            _, x1, y1, x2, y2, r = prim
+            return ("rrect", x1 - margin, y1 - margin, x2 + margin, y2 + margin, r + margin)
         if kind == "circle":
             _, cx, cy, r = prim
             return ("circle", cx, cy, r + margin)
