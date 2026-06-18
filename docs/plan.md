@@ -1,6 +1,6 @@
 # Touch Footprint Generator — Approach, Stack & Roadmap
 
-**Status:** in progress. Compiled 2026-06-17. **Phases 0–3 complete** (headless engine ships rectangular / chevron / interdigitated **sliders and wheels**, DRC-clean in KiCad 10; a PySide6 GUI with a slider/wheel switcher gives a live preview and export); Phase 4 (XY diamond pad) is next.
+**Status:** in progress. Compiled 2026-06-17; updated 2026-06-18. **Phases 0–4 complete** (headless engine ships rectangular / chevron / interdigitated **sliders and wheels** plus a two-layer mutual-cap **XY diamond trackpad** with B.Cu via bridges, all DRC-clean in KiCad 10; a PySide6 GUI with a slider/wheel/trackpad switcher gives a live preview and export); Phase 5 (polish & distribution) is next.
 **Companion docs:** [`capacitive-touch-design-guidelines.md`](./capacitive-touch-design-guidelines.md) (the numbers the generator consumes) and [`touch-footprint-tools-landscape.md`](./touch-footprint-tools-landscape.md) (prior art and gaps this fills).
 
 A standalone, vendor-agnostic desktop tool that parametrically generates **capacitive-touch interface footprints** (sliders, wheels, XY diamond pads) for KiCad — with a **live visual preview**, emitting a ready-to-use **footprint (`.kicad_mod`) plus a matching schematic symbol (`.kicad_sym`)**. The landscape survey confirms nothing like this exists today: vendor tools are silicon-locked and geometry-blind, KiCad's own touch wizards are archived (2023) and cover only slider + mutual-cap button, and the few open generators are tiny and dormant.
@@ -76,7 +76,7 @@ Whole stack is **Python** — it is the language of every relevant prior-art gen
 | **1 — Slider engine (headless)** ✅ | `params`+`geometry`+`export` for rectangular → chevron/interdigitated slider; `W+2A` constraint; dummy end segments; CLI. | Golden-file snapshots stable; `kicad-cli pcb drc` clean on a test board; pads ↔ symbol pins correct. |
 | **2 — Slider GUI** ✅ | PySide6 shell, parameter panel, **live preview**, export buttons; polished spacing/zoom/pan. | Editing any parameter updates the preview in real time; exported file matches the preview. |
 | **3 — Wheel** ✅ | Reuse slider interpolation bent into an annulus; arc tessellation; center keep-out; continuous (no end dummies). | Generates a valid 3+-segment wheel; DRC-clean; previewed live. |
-| **4 — XY diamond pad** | Mutual-cap diamond matrix; half-diamond edge termination; layer **bridges/vias**; Rx/Tx axis assignment. | Generates an N×M diamond pad with correct bridging; DRC-clean. (Highest complexity — may use zones for some fills.) |
+| **4 — XY diamond pad** ✅ | Mutual-cap diamond matrix; half-diamond edge termination; layer **bridges/vias**; Rx/Tx axis assignment. | Generates an N×M diamond pad with correct bridging; DRC-clean. Done: two-layer `F.Cu`/`B.Cu` matrix, Tx columns bridged by thru-hole vias (connectivity verified by DRC `unconnected_items == []`, not assumed), half-diamond edges, `R+C` pins, GUI + CLI. No board-level zones needed (electrodes-only scope, per §1). |
 | **5 — Polish & distribution** | Vendor presets, fab-min-rule guards, cross-platform binaries, user docs. | Installable binary; presets reproduce vendor reference dimensions. |
 
 ---
