@@ -33,6 +33,7 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass, replace
+from typing import Any
 
 from ._validate import require_finite
 from .slider import SliderError
@@ -163,6 +164,15 @@ class TrackpadParams:
         after clipping; thinner slivers/crescents at a curved boundary are dropped
         (the CLI defaults this to the active fab profile's min track width). Unused
         for ``mask_shape == "rect"``.
+    panel_width, panel_height:
+        Explicit overall **outline** size (mm) when the pad is designed from a
+        known overall dimension rather than from a row/column count (use
+        :meth:`from_size`). ``None`` (default) makes the outline follow the lattice
+        extent (``num_cols · pitch`` × ``num_rows · pitch``), exactly as before.
+        When set, the outline is held at *exactly* this size: where the lattice
+        overflows it the rim diamonds are trimmed (clean box cuts → partial edge
+        channels); where it underflows an empty margin is left out to the outline.
+        The diamond pitch is never stretched, so the diamonds stay square.
     name:
         Base name for the emitted footprint / symbol.
     ground_hatch, ground_margin, ground_hatch_width, ground_hatch_pitch,
@@ -183,6 +193,8 @@ class TrackpadParams:
     corner_radius: float = 0.0
     radius: float | None = None
     min_feature: float = 0.1
+    panel_width: float | None = None
+    panel_height: float | None = None
     name: str = "CT_Trackpad"
 
     # -- optional board-level support copper (default off) ----------------- #
@@ -228,14 +240,27 @@ class TrackpadParams:
         return self.num_rows + self.num_cols
 
     @property
-    def width(self) -> float:
-        """Overall pad width (mm); half-diamond edges → ``num_cols · pitch``."""
+    def lattice_width(self) -> float:
+        """Diamond-lattice extent across the columns, ``num_cols · pitch``."""
         return self.num_cols * self.diamond_pitch
 
     @property
-    def height(self) -> float:
-        """Overall pad height (mm); half-diamond edges → ``num_rows · pitch``."""
+    def lattice_height(self) -> float:
+        """Diamond-lattice extent down the rows, ``num_rows · pitch``."""
         return self.num_rows * self.diamond_pitch
+
+    @property
+    def width(self) -> float:
+        """Overall **outline** width (mm): the explicit :attr:`panel_width` when the
+        pad was sized from an overall dimension, else the lattice extent
+        ``num_cols · pitch``."""
+        return self.panel_width if self.panel_width is not None else self.lattice_width
+
+    @property
+    def height(self) -> float:
+        """Overall **outline** height (mm): the explicit :attr:`panel_height` when
+        set, else the lattice extent ``num_rows · pitch``."""
+        return self.panel_height if self.panel_height is not None else self.lattice_height
 
     @property
     def effective_radius(self) -> float:
@@ -252,6 +277,39 @@ class TrackpadParams:
         """Return a copy (parity with slider/wheel; nothing to resolve here)."""
         return replace(self)
 
+    @classmethod
+    def from_size(
+        cls,
+        panel_width: float,
+        panel_height: float,
+        *,
+        diamond_pitch: float = 5.0,
+        **kwargs: Any,
+    ) -> "TrackpadParams":
+        """Build params for a pad of a target overall size, instead of a row/col count.
+
+        Picks the whole row/column counts that best fill ``panel_width ×
+        panel_height`` at ``diamond_pitch`` (``round(dim / pitch)``, floored at the
+        :data:`MIN_LINES` two-line minimum) while keeping the diamonds square, and
+        pins the outline to *exactly* the requested size. The achieved lattice
+        extent therefore lands within half a pitch of the target on each axis; the
+        residual is trimmed (overflow) or left as an empty margin (underflow) out to
+        the fixed outline. Extra ``kwargs`` (``name``, ``diamond_gap``, ``mask_shape``
+        …) pass straight through to the constructor.
+        """
+        if diamond_pitch <= 0:
+            raise TrackpadError(f"diamond_pitch must be > 0, got {diamond_pitch}")
+        cols = max(MIN_LINES, round(panel_width / diamond_pitch))
+        rows = max(MIN_LINES, round(panel_height / diamond_pitch))
+        return cls(
+            num_rows=rows,
+            num_cols=cols,
+            diamond_pitch=diamond_pitch,
+            panel_width=panel_width,
+            panel_height=panel_height,
+            **kwargs,
+        )
+
 
 def validate_trackpad(p: TrackpadParams) -> TrackpadParams:
     """Validate *p*, raising :class:`TrackpadError` on any constraint violation.
@@ -263,6 +321,9 @@ def validate_trackpad(p: TrackpadParams) -> TrackpadParams:
     for field, val in (("num_rows", p.num_rows), ("num_cols", p.num_cols)):
         if val < MIN_LINES:
             raise TrackpadError(f"{field} must be >= {MIN_LINES} for a 2-D XY matrix, got {val}")
+    for field, pval in (("panel_width", p.panel_width), ("panel_height", p.panel_height)):
+        if pval is not None and pval <= 0:
+            raise TrackpadError(f"{field} must be > 0 when set, got {pval}")
     if p.diamond_pitch <= 0:
         raise TrackpadError(f"diamond_pitch must be > 0, got {p.diamond_pitch}")
     if p.diamond_gap <= 0:

@@ -44,6 +44,52 @@ def test_builds_below_floor_and_above_old_caps(rows, cols):
     assert all(n.fcu for n in geo.nets)  # every line carries copper
 
 
+def _copper_bounds(geo):
+    cu = unary_union([g for n in geo.nets for g in n.fcu] + [g for n in geo.nets for g in n.bcu])
+    return cu.bounds
+
+
+def test_size_driven_exact_matches_count_driven():
+    # 40x30 @ 5 mm is an exact multiple, so a from_size pad and the equivalent
+    # count-driven pad build the same copper (the panel just records the target).
+    sized = build_trackpad(TrackpadParams.from_size(150, 200, diamond_pitch=5.0))
+    counted = build_trackpad(TrackpadParams(num_cols=30, num_rows=40, diamond_pitch=5.0))
+    assert len(sized.nets) == len(counted.nets)
+    sa = sum(g.area for n in sized.nets for g in n.fcu)
+    ca = sum(g.area for n in counted.nets for g in n.fcu)
+    assert sa == pytest.approx(ca)
+
+
+def test_panel_outline_drives_bounds():
+    # The outline (F.Fab / courtyard) is the requested panel exactly, whether the
+    # lattice overflows (gets trimmed) or underflows (empty margin) the target.
+    for target in (300, 308, 302):  # exact, overflow, underflow at 5 mm pitch
+        geo = build_trackpad(TrackpadParams.from_size(target, 100, diamond_pitch=5.0))
+        minx, _, maxx, _ = geo.bounds
+        assert maxx - minx == pytest.approx(target)
+
+
+def test_panel_overflow_trims_copper_to_outline():
+    # 308 wide @ 5 mm rounds to 62 cols (lattice 310 > 308): the rim is trimmed so
+    # no copper extends past the panel outline.
+    p = TrackpadParams.from_size(308, 100, diamond_pitch=5.0)
+    assert p.lattice_width > p.width  # lattice overflows the outline
+    geo = build_trackpad(p)
+    minx, _, maxx, _ = _copper_bounds(geo)
+    assert minx >= -p.width / 2 - 1e-6 and maxx <= p.width / 2 + 1e-6
+
+
+def test_panel_underflow_terminates_at_lattice_rim_with_empty_margin():
+    # 302 wide @ 5 mm rounds to 60 cols (lattice 300 < 302): the rim stays clean
+    # half-diamonds at the lattice edge and the surplus is an empty margin.
+    p = TrackpadParams.from_size(302, 100, diamond_pitch=5.0)
+    assert p.lattice_width < p.width  # lattice underflows the outline
+    geo = build_trackpad(p)
+    minx, _, maxx, _ = _copper_bounds(geo)
+    assert maxx - minx == pytest.approx(p.lattice_width)  # copper == lattice, not panel
+    assert maxx < p.width / 2  # an empty margin remains out to the outline
+
+
 @pytest.mark.parametrize("rows,cols", SIZES)
 def test_numbering_and_pin_names(rows, cols):
     geo = build_trackpad(TrackpadParams(num_rows=rows, num_cols=cols))

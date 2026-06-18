@@ -32,6 +32,53 @@ def test_overall_extent_is_lines_times_pitch():
     p = TrackpadParams(num_rows=4, num_cols=5, diamond_pitch=5.0)
     assert p.width == pytest.approx(25.0)
     assert p.height == pytest.approx(20.0)
+    # With no explicit panel the outline equals the lattice extent.
+    assert (p.lattice_width, p.lattice_height) == (p.width, p.height)
+
+
+def test_from_size_derives_counts_and_pins_outline():
+    # 300x200 @ 5 mm pitch is an exact multiple: 60x40 diamonds, outline == lattice.
+    p = TrackpadParams.from_size(300, 200, diamond_pitch=5.0)
+    assert (p.num_cols, p.num_rows) == (60, 40)
+    assert (p.panel_width, p.panel_height) == (300, 200)
+    assert (p.width, p.height) == (300, 200)
+    assert (p.lattice_width, p.lattice_height) == (300, 200)
+    validate_trackpad(p)
+
+
+@pytest.mark.parametrize(
+    "target,pitch,expected_cols",
+    [(308, 5.0, 62), (302, 5.0, 60), (305, 5.0, 61)],  # round(dim/pitch)
+)
+def test_from_size_rounds_counts_to_nearest(target, pitch, expected_cols):
+    p = TrackpadParams.from_size(target, 100, diamond_pitch=pitch)
+    assert p.num_cols == expected_cols
+    # The outline is held at exactly the requested size regardless of rounding.
+    assert p.width == pytest.approx(target)
+
+
+def test_from_size_floors_at_min_lines():
+    # A target smaller than two pitches still yields the 2-line structural minimum.
+    p = TrackpadParams.from_size(3, 3, diamond_pitch=5.0)
+    assert (p.num_rows, p.num_cols) == (2, 2)
+
+
+def test_from_size_passes_through_kwargs():
+    p = TrackpadParams.from_size(50, 50, diamond_pitch=5.0, name="CT_Big", diamond_gap=0.4)
+    assert p.name == "CT_Big"
+    assert p.diamond_gap == 0.4
+
+
+def test_width_height_follow_explicit_panel():
+    p = TrackpadParams(num_rows=4, num_cols=5, diamond_pitch=5.0, panel_width=40, panel_height=30)
+    assert (p.width, p.height) == (40, 30)  # outline = panel
+    assert (p.lattice_width, p.lattice_height) == (25, 20)  # lattice = lines*pitch
+
+
+@pytest.mark.parametrize("field", ["panel_width", "panel_height"])
+def test_reject_nonpositive_panel(field):
+    with pytest.raises(TrackpadError, match=f"{field} must be > 0"):
+        validate_trackpad(TrackpadParams(**{field: 0.0}))
 
 
 @pytest.mark.parametrize("key", sorted(TRACKPAD_PRESETS))

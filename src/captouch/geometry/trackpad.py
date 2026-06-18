@@ -233,15 +233,41 @@ def build_trackpad(params: TrackpadParams) -> TrackpadGeometry:
     via_d = params.via_diameter
     voff = d - via_d  # via centre offset from a diamond centre toward its vertex
 
+    # The diamond lattice (where the diamonds sit) is always num_lines · pitch.
     W = C * P
     H = R * P
     x0, y0 = -W / 2.0, -H / 2.0
     x1, y1 = W / 2.0, H / 2.0
-    clip = _mask_clip(params, x0, y0, x1, y1)
-    box_clip = box(x0, y0, x1, y1)  # rect baseline for the per-channel area fraction
+
+    # The *outline* (F.Fab / courtyard / clip boundary) is the explicit panel when
+    # the pad was sized from an overall dimension (TrackpadParams.from_size), else
+    # the lattice extent. A rect panel smaller than the lattice trims the rim
+    # diamonds (clean box cuts → partial edge channels); a larger panel leaves an
+    # empty margin out to the outline. The pitch is never stretched.
+    out_w, out_h = params.width, params.height
+    ax0, ay0 = -out_w / 2.0, -out_h / 2.0
+    ax1, ay1 = out_w / 2.0, out_h / 2.0
+    rect_trim = params.mask_shape == "rect" and (out_w < W - 1e-9 or out_h < H - 1e-9)
+
+    # How to describe (and what to suggest for) a line that the boundary clips away.
+    if rect_trim:
+        boundary, hint = "panel outline", "enlarge panel_width/panel_height"
+    else:
+        boundary = f"{params.mask_shape} mask"
+        hint = "use a larger radius or a more square matrix (num_rows ≈ num_cols)"
+
+    box_clip = box(x0, y0, x1, y1)  # full-channel (lattice) baseline for area fractions
+    clip = _mask_clip(params, ax0, ay0, ax1, ay1)
+    if params.panel_width is not None or params.panel_height is not None:
+        # Confine the lattice to its own box first: an outline *larger* than the
+        # lattice must still terminate the rim in clean half-diamonds (and leave the
+        # surplus an empty margin), not let edge diamonds bleed out to the outline.
+        # Guarded on `panel set` so the count-driven path stays byte-identical.
+        clip = clip.intersection(box_clip)
     # A curved mask (circle/rrect) leaves thin tips where it grazes a diamond; the
-    # rect mask cuts only clean half-diamonds and must stay byte-identical, so its
-    # min-width guard is disabled (0).
+    # rect mask cuts only clean straight edges, so its min-width guard is disabled (0)
+    # — that keeps the un-trimmed rect output byte-identical and is safe for a panel
+    # trim too (a box cut of a diamond is a clean polygon, never a sliver/tip).
     min_w = 0.0 if params.mask_shape == "rect" else params.min_feature
 
     # "conform" clips every diamond to the mask so the copper edge follows the curve
@@ -250,10 +276,16 @@ def build_trackpad(params: TrackpadParams) -> TrackpadGeometry:
     # so rim diamonds are kept whole or dropped whole — every survivor stays
     # ~half-present, carries its bridge via, and bridges contiguously, at the cost of
     # a chunky stair-stepped boundary. A rect mask clips nothing the lattice doesn't
-    # already terminate on, so the two modes coincide there (rect stays unchanged).
-    conform = params.clip_mode == "conform" and params.mask_shape != "rect"
+    # already terminate on, so the two modes coincide there — *unless* an explicit
+    # panel bites into the lattice, which trims it the same clean way conform does.
+    conform = (params.clip_mode == "conform" and params.mask_shape != "rect") or rect_trim
 
-    # A via pad (outer diameter via_d) only sits safely on a conform partial when its
+    # Whether any boundary actually cuts the lattice: a curved mask always does, a
+    # rect outline only when the panel is smaller than the lattice. Drives whether
+    # per-channel area fractions are computed (an un-clipped channel is 1.0).
+    is_clipped = params.mask_shape != "rect" or rect_trim
+
+    # A via pad (outer diameter via_d) only sits safely on a clipped partial when its
     # centre clears the cut edge by its own radius; shrink the mask by via_d/2 to
     # test that. (voff already keeps the centre clear of the diamond's straight edges.)
     clip_safe = clip.buffer(-via_d / 2.0, quad_segs=_CLIP_QUAD_SEGS) if conform else clip
@@ -262,8 +294,8 @@ def build_trackpad(params: TrackpadParams) -> TrackpadGeometry:
         return clip.covers(GeoPoint(px, py))
 
     def _fraction(fcu: list[Polygon], full_area: float) -> float:
-        """Surviving F.Cu area ÷ the channel's full (rect-mask) area, ``1.0`` if rect."""
-        if params.mask_shape == "rect":
+        """Surviving F.Cu area ÷ the channel's full (lattice) area, ``1.0`` if unclipped."""
+        if not is_clipped:
             return 1.0
         return round(sum(g.area for g in fcu) / full_area, 4) if full_area > 0 else 0.0
 
@@ -279,10 +311,7 @@ def build_trackpad(params: TrackpadParams) -> TrackpadGeometry:
             set(range(C + 1)) if conform else {c for c in range(C + 1) if _inside(x0 + c * P, cy)}
         )
         if not kept:
-            raise TrackpadError(
-                f"Rx row {r + 1} lies entirely outside the {params.mask_shape} mask "
-                f"— use a larger radius or a more square matrix (num_rows ≈ num_cols)"
-            )
+            raise TrackpadError(f"Rx row {r + 1} lies entirely outside the {boundary} — {hint}")
         pieces = [_diamond(x0 + c * P, cy, d) for c in sorted(kept)]
         for c in range(C):  # neck only between two kept, adjacent diamonds
             if c in kept and c + 1 in kept:
@@ -290,7 +319,7 @@ def build_trackpad(params: TrackpadParams) -> TrackpadGeometry:
                 nx1 = x0 + (c + 1) * P - d + bw
                 pieces.append(box(nx0, cy - bw / 2.0, nx1, cy + bw / 2.0))
         fcu = _normalize(unary_union(pieces).intersection(clip), min_w)
-        if params.mask_shape == "rect":
+        if params.mask_shape == "rect" and not rect_trim:
             if len(fcu) != 1:
                 raise GeometryError(
                     f"Rx row {r} did not resolve to one connected polygon "
@@ -302,11 +331,8 @@ def build_trackpad(params: TrackpadParams) -> TrackpadGeometry:
             # would be floating copper (ST AN2869). Keep the largest (the row
             # centreline) and drop the islands.
             fcu = [max(fcu, key=lambda g: g.area)]
-        if not fcu:  # conform: the whole row's copper fell outside the mask
-            raise TrackpadError(
-                f"Rx row {r + 1} lies entirely outside the {params.mask_shape} mask "
-                f"— use a larger radius or a more square matrix (num_rows ≈ num_cols)"
-            )
+        if not fcu:  # the whole row's copper fell outside the clip boundary
+            raise TrackpadError(f"Rx row {r + 1} lies entirely outside the {boundary} — {hint}")
         full_area = (
             unary_union(
                 [_diamond(x0 + c * P, cy, d) for c in range(C + 1)]
@@ -346,10 +372,7 @@ def build_trackpad(params: TrackpadParams) -> TrackpadGeometry:
         else:
             kept = {k for k in range(R + 1) if _inside(cx, y0 + k * P)}
         if not kept:
-            raise TrackpadError(
-                f"Tx column {c + 1} lies entirely outside the {params.mask_shape} mask "
-                f"— use a larger radius or a more square matrix (num_rows ≈ num_cols)"
-            )
+            raise TrackpadError(f"Tx column {c + 1} lies entirely outside the {boundary} — {hint}")
 
         # Bridge between two adjacent surviving diamonds. In conform both via centres
         # must also clear the cut edge (clip_safe), else the bridge can't be placed.
@@ -409,7 +432,15 @@ def build_trackpad(params: TrackpadParams) -> TrackpadGeometry:
             )
         )
 
-    all_copper = unary_union([g for n in nets for g in n.fcu] + [g for n in nets for g in n.bcu])
-    minx, miny, maxx, maxy = all_copper.bounds
+    if params.panel_width is not None or params.panel_height is not None:
+        # The pad was sized from an overall dimension: the outline is the requested
+        # panel exactly (so F.Fab / courtyard read the target size), independent of
+        # whether the clipped copper underfills it (empty margin) or filled it.
+        minx, miny, maxx, maxy = ax0, ay0, ax1, ay1
+    else:
+        all_copper = unary_union(
+            [g for n in nets for g in n.fcu] + [g for n in nets for g in n.bcu]
+        )
+        minx, miny, maxx, maxy = all_copper.bounds
     bounds = (round(minx, ROUND), round(miny, ROUND), round(maxx, ROUND), round(maxy, ROUND))
     return TrackpadGeometry(nets=nets, bounds=bounds, params=params)
