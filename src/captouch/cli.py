@@ -28,6 +28,7 @@ from .params import (
     WHEEL_PRESETS,
     SliderError,
     SliderParams,
+    TrackpadError,
     TrackpadParams,
     WheelParams,
     WidgetParams,
@@ -406,14 +407,18 @@ def _add_wheel_parser(sub: argparse._SubParsersAction) -> None:
 # trackpad
 # --------------------------------------------------------------------------- #
 def _trackpad_params_from_args(args: argparse.Namespace) -> TrackpadParams:
-    """Start from a preset (or defaults) and apply only explicitly-set flags."""
+    """Start from a preset (or defaults) and apply only explicitly-set flags.
+
+    Two ways to size the matrix: a row/column count (``--num-rows``/``--num-cols``)
+    or an overall outline (``--panel-width``/``--panel-height``), which derives the
+    counts from the pitch and trims/insets the lattice to the requested size. The
+    two are mutually exclusive.
+    """
     base = TRACKPAD_PRESETS[args.preset] if args.preset else TrackpadParams()
 
     overrides: dict[str, Any] = {}
     for flag, field in (
         ("name", "name"),
-        ("num_rows", "num_rows"),
-        ("num_cols", "num_cols"),
         ("diamond_pitch", "diamond_pitch"),
         ("diamond_gap", "diamond_gap"),
         ("bridge_width", "bridge_width"),
@@ -433,6 +438,28 @@ def _trackpad_params_from_args(args: argparse.Namespace) -> TrackpadParams:
     overrides["min_feature"] = FAB_PROFILES[args.fab_profile].min_track_width
     overrides.update(_support_overrides(args))
 
+    if args.panel_width is not None or args.panel_height is not None:
+        if args.panel_width is None or args.panel_height is None:
+            raise TrackpadError("--panel-width and --panel-height must be given together")
+        if args.num_rows is not None or args.num_cols is not None:
+            raise TrackpadError(
+                "size the pad with --panel-width/--panel-height OR --num-rows/--num-cols, not both"
+            )
+        pitch = args.diamond_pitch if args.diamond_pitch is not None else base.diamond_pitch
+        sized = TrackpadParams.from_size(args.panel_width, args.panel_height, diamond_pitch=pitch)
+        overrides.update(
+            num_rows=sized.num_rows,
+            num_cols=sized.num_cols,
+            diamond_pitch=pitch,
+            panel_width=sized.panel_width,
+            panel_height=sized.panel_height,
+        )
+        return replace(base, **overrides)
+
+    for flag, field in (("num_rows", "num_rows"), ("num_cols", "num_cols")):
+        value = getattr(args, flag)
+        if value is not None:
+            overrides[field] = value
     return replace(base, **overrides)
 
 
@@ -469,12 +496,30 @@ def _trackpad(args: argparse.Namespace) -> int:
         f"  mutual-cap trackpad: {params.num_rows}x{params.num_cols} diamonds "
         f"({len(geo.rx_nets)} Rx + {len(geo.tx_nets)} Tx, {params.num_nodes} nodes), "
         f"pitch={params.diamond_pitch:.2f} gap={params.diamond_gap:.2f} mm, "
-        f"extent {params.width:.2f} x {params.height:.2f} mm"
+        f"outline {params.width:.2f} x {params.height:.2f} mm"
     )
+    _report_panel(params)
     _report_partial_channels(geo)
     _report_support(geo)
     _report_fab(violations, args.fab_profile, strict=False)
     return 0
+
+
+def _report_panel(params: TrackpadParams) -> None:
+    """When the pad was sized from an overall outline, note the derived lattice."""
+    if params.panel_width is None and params.panel_height is None:
+        return
+    lw, lh = params.lattice_width, params.lattice_height
+    if lw > params.width or lh > params.height:
+        fit = "lattice trimmed to the outline"
+    elif lw < params.width or lh < params.height:
+        fit = "empty margin left out to the outline"
+    else:
+        fit = "exact fit"
+    print(
+        f"    sized from panel: {params.num_cols}x{params.num_rows} diamonds at "
+        f"{params.diamond_pitch:.2f} mm pitch span {lw:.2f} x {lh:.2f} mm ({fit})"
+    )
 
 
 def _report_partial_channels(geo) -> None:
@@ -507,6 +552,18 @@ def _add_trackpad_parser(sub: argparse._SubParsersAction) -> None:
     p.add_argument("--name", help="footprint/symbol base name")
     p.add_argument("--num-rows", type=int, help="Rx (sense) rows (>= 2, no upper cap)")
     p.add_argument("--num-cols", type=int, help="Tx (drive) columns (>= 2, no upper cap)")
+    p.add_argument(
+        "--panel-width",
+        type=float,
+        help="design from an overall outline width (mm) instead of --num-cols: "
+        "derives the column count from the pitch and trims/insets to this exact size",
+    )
+    p.add_argument(
+        "--panel-height",
+        type=float,
+        help="overall outline height (mm); pair with --panel-width (mutually "
+        "exclusive with --num-rows/--num-cols)",
+    )
     p.add_argument("--diamond-pitch", type=float, help="row/column centre spacing P (mm)")
     p.add_argument("--diamond-gap", type=float, help="copper-to-copper gap A between diamonds (mm)")
     p.add_argument("--bridge-width", type=float, help="F.Cu neck / B.Cu strap width (mm)")

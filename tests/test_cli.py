@@ -208,6 +208,57 @@ def test_trackpad_conform_circle_reports_partial_channels(tmp_path, capsys):
     assert (tmp_path / "T.kicad_mod").exists()
 
 
+def test_trackpad_panel_size_derives_counts(tmp_path, capsys):
+    # 52x38 @ 5 mm -> round to 10x8 diamonds; outline held at the requested size.
+    rc = main(
+        [
+            "trackpad",
+            "--out",
+            str(tmp_path),
+            "--name",
+            "T",
+            "--panel-width",
+            "52",
+            "--panel-height",
+            "38",
+            "--diamond-pitch",
+            "5",
+        ]
+    )
+    assert rc == 0
+    out = capsys.readouterr().out
+    assert "10x8 diamonds" in out  # num_cols x num_rows, derived from the panel
+    assert "outline 52.00 x 38.00 mm" in out
+    assert "sized from panel" in out
+    assert (tmp_path / "T.kicad_mod").exists()
+
+
+def test_trackpad_panel_requires_both_dims(tmp_path, capsys):
+    rc = main(["trackpad", "--out", str(tmp_path), "--name", "T", "--panel-width", "50"])
+    assert rc == 2
+    assert "must be given together" in capsys.readouterr().out
+
+
+def test_trackpad_panel_conflicts_with_counts(tmp_path, capsys):
+    rc = main(
+        [
+            "trackpad",
+            "--out",
+            str(tmp_path),
+            "--name",
+            "T",
+            "--panel-width",
+            "50",
+            "--panel-height",
+            "50",
+            "--num-cols",
+            "5",
+        ]
+    )
+    assert rc == 2
+    assert "not both" in capsys.readouterr().out
+
+
 def test_trackpad_corner_radius_without_rrect_errors(tmp_path, capsys):
     rc = main(["trackpad", "--out", str(tmp_path), "--name", "T", "--corner-radius", "2"])
     assert rc == 2  # SliderError path; nothing written
@@ -226,6 +277,8 @@ def test_trackpad_min_feature_tracks_fab_profile():
         name=None,
         num_rows=None,
         num_cols=None,
+        panel_width=None,
+        panel_height=None,
         diamond_pitch=None,
         diamond_gap=None,
         bridge_width=None,
