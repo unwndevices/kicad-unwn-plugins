@@ -107,6 +107,26 @@ class TrackpadPanel(PanelBase):
         self.name.textEdited.connect(self._emit)
         self._on_mask()  # set initial enabled state for the default rect mask
 
+        self._set_tooltips(
+            {
+                self.name: "Base name for the generated .kicad_mod / .kicad_sym files.",
+                self.num_rows: "Rx (sense) rows on F.Cu, 3–16. R×C ≤ 100 nodes total.",
+                self.num_cols: "Tx (drive) columns bridged on B.Cu, 3–16.",
+                self.diamond_pitch: "Row/column centre spacing P (mm).",
+                self.diamond_gap: "Copper-to-copper gap A (mm) between diamonds.",
+                self.bridge_width: "F.Cu neck / B.Cu strap width (mm) at a Tx bridge.",
+                self.via_drill: "Bridge via finished hole diameter (mm).",
+                self.via_diameter: "Bridge via outer copper diameter (mm). Annular ring ≥ 0.1 mm.",
+                self.mask_shape: "Outer outline: rect (default), rounded-rect, or circle.",
+                self.clip_mode: (
+                    "Curved-mask diamonds: inscribe (kept whole or dropped) or "
+                    "conform (cut to the curve, Azoteq Fig 6.3). Inert for a rect mask."
+                ),
+                self.corner_radius: "Rounded-rect fillet radius (mm); used with the rrect mask.",
+                self.radius: "Circle mask radius (mm). Auto = inscribed 0.5·min(width, height).",
+            }
+        )
+
     # -- signals ------------------------------------------------------------ #
     def _on_mask(self, *args) -> None:
         """Enable corner_radius for rrect and the radius row for circle only."""

@@ -107,6 +107,26 @@ class WheelPanel(PanelBase):
         self.name.textEdited.connect(self._emit)
         self.shape.currentIndexChanged.connect(self._on_shape)
 
+        self._set_tooltips(
+            {
+                self.name: "Base name for the generated .kicad_mod / .kicad_sym files.",
+                self.shape: "Electrode boundary style around the ring.",
+                self.num_segments: "Electrode count around the ring (≥3). The wheel is continuous.",
+                self.segment_width: (
+                    "Arc width W (mm) at the mean radius. Auto derives W = finger − 2·gap."
+                ),
+                self.ring_width: "Radial extent of the ring (mm).",
+                self.air_gap: "Copper-to-copper gap A (mm) between adjacent electrodes.",
+                self.finger_diameter: "Finger contact-disc diameter (mm) used by the W + 2A check.",
+                self.num_fingers: "Teeth per shared boundary (chevron / interdigitated).",
+                self.tooth_depth: "Boundary half-amplitude (mm). Auto = 0.3·W; must stay below W/2.",
+                self.corner_radius: "Extra ESD convex-corner rounding (mm).",
+                self.tip_radius: "Rounding (mm) for sharp chevron tooth-tips (ESD / etch relief).",
+                self.arc_resolution: "Circle tessellation: polyline segments per 90° of arc.",
+                self.relax: "Skip the W + 2A = finger-diameter check (deliberately odd geometry).",
+            }
+        )
+
     # -- signals ------------------------------------------------------------ #
     def _on_preset(self, index: int) -> None:
         if index <= 0:

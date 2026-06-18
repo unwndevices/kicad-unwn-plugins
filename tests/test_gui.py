@@ -430,3 +430,31 @@ def test_preview_save_image(qapp, tmp_path, ext):
     assert out.exists() and out.stat().st_size > 0
     if ext == "svg":
         assert "<svg" in out.read_text(errors="ignore")
+
+
+def test_fields_have_tooltips(qapp):
+    from captouch.gui.panel import ParamPanel
+
+    panel = ParamPanel()
+    assert panel.air_gap.toolTip()
+    assert panel.num_segments.toolTip()
+    assert panel.segment_width.toolTip()
+
+
+def test_invalid_param_outlines_offending_field_and_clears(qapp):
+    from captouch.gui.app import MainWindow
+
+    win = MainWindow()  # slider panel
+    # W=20 with A=0.5, finger=8 violates W+2A=finger; the message names
+    # segment_width + finger_diameter (both in valid spin-box range).
+    win.panel.set_params(SliderParams(segment_width=20.0, air_gap=0.5, finger_diameter=8.0))
+    win._rebuild()
+    assert win._status.text().startswith("⚠")
+    assert win.panel.segment_width.styleSheet()  # outlined
+    assert win.panel.finger_diameter.styleSheet()
+    assert not win.panel.air_gap.styleSheet()  # not named -> untouched
+
+    win.panel.set_params(SliderParams())  # valid again
+    win._rebuild()
+    assert not win.panel.segment_width.styleSheet()  # cleared
+    assert not win.panel.finger_diameter.styleSheet()

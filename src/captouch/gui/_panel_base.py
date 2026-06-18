@@ -22,6 +22,9 @@ __all__ = ["PanelBase", "PRESET_PLACEHOLDER"]
 
 PRESET_PLACEHOLDER = "Load preset…"
 
+# Red outline applied to a spin box the current validation error names.
+_FIELD_ERR_STYLE = "border: 1px solid #e88;"
+
 
 class PanelBase(QWidget):
     """Base parameter panel: a ``changed`` signal plus widget factories."""
@@ -31,6 +34,7 @@ class PanelBase(QWidget):
     def __init__(self, parent=None) -> None:
         super().__init__(parent)
         self._loading = False  # suppress `changed` while loading programmatically
+        self._highlighted: list[QWidget] = []  # spin boxes currently flagged invalid
 
     # -- signals ------------------------------------------------------------ #
     def _emit(self, *args) -> None:
@@ -48,6 +52,38 @@ class PanelBase(QWidget):
         self.tooth_depth_auto.setEnabled(teeth)
         self.tooth_depth.setEnabled(teeth and not self.tooth_depth_auto.isChecked())
         self._emit()
+
+    # -- tooltips & inline validation --------------------------------------- #
+    @staticmethod
+    def _set_tooltips(tips: dict[QWidget, str]) -> None:
+        """Attach a hover hint to each ``{widget: text}``."""
+        for widget, text in tips.items():
+            widget.setToolTip(text)
+
+    def _numeric_widgets(self) -> dict[str, QWidget]:
+        """Map each spin-box attribute to its name (== its params field name)."""
+        return {
+            name: w for name, w in vars(self).items() if isinstance(w, (QSpinBox, QDoubleSpinBox))
+        }
+
+    def show_error(self, message: str) -> None:
+        """Outline every spin box whose params field name appears in *message*.
+
+        Validation messages name the offending field (e.g. ``"air_gap must be
+        > 0"``), so this points the user at the control to fix without parsing
+        the geometry. Fields the message doesn't name are left untouched.
+        """
+        self.clear_error()
+        for name, widget in self._numeric_widgets().items():
+            if name in message:
+                widget.setStyleSheet(_FIELD_ERR_STYLE)
+                self._highlighted.append(widget)
+
+    def clear_error(self) -> None:
+        """Remove all inline validation outlines."""
+        for widget in self._highlighted:
+            widget.setStyleSheet("")
+        self._highlighted.clear()
 
     # -- widget factories --------------------------------------------------- #
     def _spin(self, lo: int, hi: int, step: int) -> QSpinBox:

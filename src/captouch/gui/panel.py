@@ -114,6 +114,30 @@ class ParamPanel(PanelBase):
         self.name.textEdited.connect(self._emit)
         self.shape.currentIndexChanged.connect(self._on_shape)
 
+        self._set_tooltips(
+            {
+                self.name: "Base name for the generated .kicad_mod / .kicad_sym files.",
+                self.shape: (
+                    "Electrode edge style. Chevron / interdigitated stretch the crossover "
+                    "so a finger always overlaps ≥2 segments (linear interpolation)."
+                ),
+                self.num_segments: "Active (sensed) electrode count. ≥3 for usable interpolation.",
+                self.segment_width: (
+                    "Segment width W (mm). Auto derives W = finger − 2·gap so that "
+                    "W + 2A = finger diameter (Infineon AN85951 Eq. 73)."
+                ),
+                self.segment_height: "Electrode height H (mm) — the slider's transverse dimension.",
+                self.air_gap: "Copper-to-copper gap A (mm) between adjacent electrodes.",
+                self.finger_diameter: "Finger contact-disc diameter (mm) used by the W + 2A check.",
+                self.num_fingers: "Teeth per shared boundary (chevron / interdigitated).",
+                self.tooth_depth: "Boundary half-amplitude (mm). Auto = 0.3·W; must stay below W/2.",
+                self.end_dummies: "Grounded dummy segments per end (0–2) for uniform end feel.",
+                self.corner_radius: "Extra ESD convex-corner rounding (mm), applied to all shapes.",
+                self.tip_radius: "Rounding (mm) for sharp chevron tooth-tips (ESD / etch relief).",
+                self.relax: "Skip the W + 2A = finger-diameter check (deliberately odd geometry).",
+            }
+        )
+
     # -- signals ------------------------------------------------------------ #
     def _on_preset(self, index: int) -> None:
         if index <= 0:

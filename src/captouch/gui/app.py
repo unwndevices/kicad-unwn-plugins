@@ -229,10 +229,12 @@ class MainWindow(QMainWindow):
         except (SliderError, GeometryError) as exc:
             self._status.setStyleSheet(_ERR_STYLE)
             self._status.setText(f"⚠ {exc}")
+            self.panel.show_error(str(exc))  # outline the field(s) the error names
             self._export_btn.setEnabled(self._geo is not None)
             self._fab_banner.setVisible(False)
             return
 
+        self.panel.clear_error()
         self._geo = geo
         self.preview.set_geometry(geo)
         self._export_btn.setEnabled(True)
