@@ -185,14 +185,37 @@ def test_trackpad_masked_footprint_renders(kw, tmp_path):
 
 @pytest.mark.parametrize("rows,cols", [(4, 4), (5, 5), (6, 6)])
 @pytest.mark.parametrize("kw", [
-    {"mask_shape": "rrect", "corner_radius": 2.0}, {"mask_shape": "circle"},
+    {"mask_shape": "rrect", "corner_radius": 2.0},
+    {"mask_shape": "circle"},
+    {"mask_shape": "rrect", "corner_radius": 2.0, "clip_mode": "conform"},
+    {"mask_shape": "circle", "clip_mode": "conform"},
 ])
 def test_trackpad_masked_copper_drc_clean(kw, rows, cols, tmp_path):
     # Clipped circle/rrect copper must be DRC-clean AND fully connected across the
-    # sizes where the mask drops corner diamonds: an empty unconnected_items proves
-    # every kept Tx island is still bridged and no clipped Rx arc floats — the
-    # correctness guarantee behind the centre-inside construction.
+    # sizes where the mask drops corner diamonds, in BOTH clip modes: an empty
+    # unconnected_items proves every kept Tx island is still bridged and no clipped
+    # Rx arc floats. For conform this also exercises the cut rim partials — the via
+    # centres still land on copper and the min-width open leaves no slivers.
     geo = build_trackpad(TrackpadParams(name="CT_Trackpad", num_rows=rows, num_cols=cols, **kw))
+    board = tmp_path / "board.kicad_pcb"
+    board.write_text(widget_board_text(geo, nets=trackpad_net_map(geo)))
+    report = _drc(board, tmp_path / "drc.json")
+    assert report["violations"] == [], report["violations"]
+    assert report["unconnected_items"] == [], report["unconnected_items"]
+
+
+@pytest.mark.parametrize("kw", [
+    {"mask_shape": "circle", "clip_mode": "conform"},
+    {"mask_shape": "rrect", "corner_radius": 6.0, "clip_mode": "conform"},
+])
+def test_trackpad_conform_large_drc_clean(kw, tmp_path):
+    # A larger conform pad cuts many rim diamonds into partial channels; it must
+    # still pass DRC and stay fully connected. The circle case here also leaves
+    # below-threshold partials, exercising the rim where the cut is deepest.
+    geo = build_trackpad(TrackpadParams(name="CT_Trackpad", num_rows=7, num_cols=7,
+                                        diamond_pitch=6.0, **kw))
+    if kw["mask_shape"] == "circle":
+        assert geo.partial_channels(), "expected sub-threshold rim channels to report"
     board = tmp_path / "board.kicad_pcb"
     board.write_text(widget_board_text(geo, nets=trackpad_net_map(geo)))
     report = _drc(board, tmp_path / "drc.json")
