@@ -9,10 +9,11 @@ KiCad's in-flux scripting API).
 License: **GPL-3.0-or-later**. See [`docs/plan.md`](docs/plan.md) for the architecture, stack, and
 roadmap, and the companion research in [`docs/`](docs).
 
-## Status — Phase 4 (XY diamond trackpad)
+## Status — Phase 5 (polish & distribution)
 
-Sliders, wheels, **and XY diamond trackpads** are done, with a desktop GUI. The engine — `params` →
-`geometry` (Shapely) → `export` — generates three widgets:
+Sliders, wheels, **and XY diamond trackpads** are done, with a desktop GUI, **vendor-pinned presets**,
+**fab-rule guards**, and a **standalone binary**. The engine — `params` → `geometry` (Shapely) →
+`export` — generates three widgets:
 
 - **Linear sliders** — a row of rectangular / chevron / interdigitated electrodes with grounded
   end-dummy segments.
@@ -37,12 +38,18 @@ distinct `F.Cu`, `B.Cu`, and via layers for the trackpad) rendering the *same* g
 serialise — so the preview is byte-faithful to the exported copper — plus one-click export of the
 footprint + symbol.
 
+A full **[usage guide](docs/usage.md)** covers install, the CLI, fab profiles, the GUI, importing into
+KiCad, and building the binary.
+
 Install (Shapely is the only runtime dependency; the GUI adds PySide6):
 
 ```sh
 pip install -e .          # engine + CLI (or: pip install shapely)
 pip install -e '.[gui]'   # add the PySide6 desktop GUI
 ```
+
+Non-Python users can build a single self-contained executable instead — see
+[Standalone binary](#standalone-binary).
 
 ### Launch the GUI
 
@@ -109,6 +116,33 @@ Trackpad parameters: `--num-rows` (Rx sense lines) `×` `--num-cols` (Tx drive l
 cross-layer bridge vias. The Tx columns are bridged on `B.Cu` so the design needs **two copper
 layers**. Note the connecting necks pinch tighter than the bulk diamond gap (~`gap/√2`), as in any
 diamond pattern — that pinch is what the DRC gate checks.
+
+### Fab-rule guards
+
+After building the geometry, every generator checks the tightest copper width, clearance, drill, and
+annular ring it will produce against a **fab profile** (`--fab-profile {default,jlcpcb,oshpark}`,
+default `default`; `--list-fab-profiles` prints them). A violation is a non-blocking **warning** by
+default — the files are still written; `--strict` promotes it to a hard error (exit 3, nothing
+written) for CI. The GUI shows the same check live, in an amber banner under the preview. The bundled
+profiles are representative of common 2-layer capabilities — confirm against your own board house.
+
+```sh
+captouch trackpad --fab-profile oshpark            # warns: via annular ring below the floor
+captouch trackpad --fab-profile oshpark --strict   # refuses to generate (exit 3)
+```
+
+### Standalone binary
+
+For users without Python, PyInstaller freezes the CLI + GUI into one file:
+
+```sh
+pip install -e '.[packaging]'
+packaging/build-binary.sh        # Linux / macOS → dist/captouch (captouch gui launches the app)
+```
+
+PyInstaller can't cross-compile, so each OS builds its own binary; the
+[`build-binaries` CI workflow](.github/workflows/build.yml) builds and smoke-tests on
+Linux/macOS/Windows and uploads the artifacts.
 
 ### Tests
 
