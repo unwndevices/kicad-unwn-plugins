@@ -16,7 +16,14 @@ from __future__ import annotations
 from typing import Sequence, Union
 
 from .. import __version__, sexpr
-from ..geometry import SliderGeometry, SupportCopper, TrackpadGeometry, WheelGeometry, build_support
+from ..geometry import (
+    KeypadGeometry,
+    SliderGeometry,
+    SupportCopper,
+    TrackpadGeometry,
+    WheelGeometry,
+    build_support,
+)
 from ..geometry._base import (
     ANCHOR_RADIUS,
     COURTYARD_MARGIN,
@@ -30,10 +37,10 @@ from ..sexpr import Sym
 
 #: Any widget geometry the exporter can serialise (duck-typed: ``electrodes``,
 #: ``bounds``, ``params.name``, ``fab_primitives``, ``courtyard_outline``).
-WidgetGeometry = Union[SliderGeometry, WheelGeometry, TrackpadGeometry]
-# Widgets whose copper is one custom pad per electrode (slider, wheel). The
+WidgetGeometry = Union[SliderGeometry, WheelGeometry, TrackpadGeometry, KeypadGeometry]
+# Widgets whose copper is one custom pad per electrode (slider, wheel, keypad). The
 # trackpad's copper spans many polygons per net, so it has its own exporter.
-ElectrodeGeometry = Union[SliderGeometry, WheelGeometry]
+ElectrodeGeometry = Union[SliderGeometry, WheelGeometry, KeypadGeometry]
 
 # KiCad 9.0 footprint/board S-expression format version (date token). KiCad 10
 # reads and upgrades it; emitting a newer token would make KiCad 9 reject it.
@@ -478,6 +485,18 @@ def wheel_footprint(geo: WheelGeometry) -> list:
 
 def wheel_footprint_text(geo: WheelGeometry) -> str:
     """Serialise a wheel footprint to `.kicad_mod` text (trailing newline)."""
+    return widget_footprint_text(geo)
+
+
+# A keypad is one custom pad per button electrode (an ElectrodeGeometry), so its
+# footprint is emitted by the shared electrode path; these aliases just read clearly.
+def keypad_footprint(geo: KeypadGeometry) -> list:
+    """Build a keypad footprint node (see :func:`widget_footprint`)."""
+    return widget_footprint(geo)
+
+
+def keypad_footprint_text(geo: KeypadGeometry) -> str:
+    """Serialise a keypad footprint to `.kicad_mod` text (trailing newline)."""
     return widget_footprint_text(geo)
 
 

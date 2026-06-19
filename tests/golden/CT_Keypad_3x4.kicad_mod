@@ -1,0 +1,410 @@
+(footprint "CT_Keypad_3x4"
+	(version 20241229)
+	(generator "kicad-captouch")
+	(generator_version "0.1.0")
+	(layer "F.Cu")
+	(property "Reference" "REF**"
+		(at 0 -20.5 0)
+		(layer "F.SilkS")
+		(effects
+			(font
+				(size 1 1)
+				(thickness 0.15)
+			)
+		)
+	)
+	(property "Value" "CT_Keypad_3x4"
+		(at 0 20.5 0)
+		(layer "F.Fab")
+		(effects
+			(font
+				(size 1 1)
+				(thickness 0.15)
+			)
+		)
+	)
+	(attr smd)
+	(fp_rect
+		(start -26 -19)
+		(end -16 -9)
+		(stroke
+			(width 0.1)
+			(type default)
+		)
+		(fill no)
+		(layer "F.Fab")
+	)
+	(fp_rect
+		(start -12 -19)
+		(end -2 -9)
+		(stroke
+			(width 0.1)
+			(type default)
+		)
+		(fill no)
+		(layer "F.Fab")
+	)
+	(fp_rect
+		(start 2 -19)
+		(end 12 -9)
+		(stroke
+			(width 0.1)
+			(type default)
+		)
+		(fill no)
+		(layer "F.Fab")
+	)
+	(fp_rect
+		(start 16 -19)
+		(end 26 -9)
+		(stroke
+			(width 0.1)
+			(type default)
+		)
+		(fill no)
+		(layer "F.Fab")
+	)
+	(fp_rect
+		(start -26 -5)
+		(end -16 5)
+		(stroke
+			(width 0.1)
+			(type default)
+		)
+		(fill no)
+		(layer "F.Fab")
+	)
+	(fp_rect
+		(start -12 -5)
+		(end -2 5)
+		(stroke
+			(width 0.1)
+			(type default)
+		)
+		(fill no)
+		(layer "F.Fab")
+	)
+	(fp_rect
+		(start 2 -5)
+		(end 12 5)
+		(stroke
+			(width 0.1)
+			(type default)
+		)
+		(fill no)
+		(layer "F.Fab")
+	)
+	(fp_rect
+		(start 16 -5)
+		(end 26 5)
+		(stroke
+			(width 0.1)
+			(type default)
+		)
+		(fill no)
+		(layer "F.Fab")
+	)
+	(fp_rect
+		(start -26 9)
+		(end -16 19)
+		(stroke
+			(width 0.1)
+			(type default)
+		)
+		(fill no)
+		(layer "F.Fab")
+	)
+	(fp_rect
+		(start -12 9)
+		(end -2 19)
+		(stroke
+			(width 0.1)
+			(type default)
+		)
+		(fill no)
+		(layer "F.Fab")
+	)
+	(fp_rect
+		(start 2 9)
+		(end 12 19)
+		(stroke
+			(width 0.1)
+			(type default)
+		)
+		(fill no)
+		(layer "F.Fab")
+	)
+	(fp_rect
+		(start 16 9)
+		(end 26 19)
+		(stroke
+			(width 0.1)
+			(type default)
+		)
+		(fill no)
+		(layer "F.Fab")
+	)
+	(fp_rect
+		(start -26.25 -19.25)
+		(end 26.25 19.25)
+		(stroke
+			(width 0.05)
+			(type default)
+		)
+		(fill no)
+		(layer "F.CrtYd")
+	)
+	(pad "1" smd custom
+		(at -21 -14)
+		(size 0.5 0.5)
+		(layers "F.Cu")
+		(options
+			(clearance outline)
+			(anchor circle)
+		)
+		(primitives
+			(gr_poly
+				(pts
+					(xy 5 -5)
+					(xy 5 5)
+					(xy -5 5)
+					(xy -5 -5)
+				)
+				(width 0)
+				(fill yes)
+			)
+		)
+	)
+	(pad "2" smd custom
+		(at -7 -14)
+		(size 0.5 0.5)
+		(layers "F.Cu")
+		(options
+			(clearance outline)
+			(anchor circle)
+		)
+		(primitives
+			(gr_poly
+				(pts
+					(xy 5 -5)
+					(xy 5 5)
+					(xy -5 5)
+					(xy -5 -5)
+				)
+				(width 0)
+				(fill yes)
+			)
+		)
+	)
+	(pad "3" smd custom
+		(at 7 -14)
+		(size 0.5 0.5)
+		(layers "F.Cu")
+		(options
+			(clearance outline)
+			(anchor circle)
+		)
+		(primitives
+			(gr_poly
+				(pts
+					(xy 5 -5)
+					(xy 5 5)
+					(xy -5 5)
+					(xy -5 -5)
+				)
+				(width 0)
+				(fill yes)
+			)
+		)
+	)
+	(pad "4" smd custom
+		(at 21 -14)
+		(size 0.5 0.5)
+		(layers "F.Cu")
+		(options
+			(clearance outline)
+			(anchor circle)
+		)
+		(primitives
+			(gr_poly
+				(pts
+					(xy 5 -5)
+					(xy 5 5)
+					(xy -5 5)
+					(xy -5 -5)
+				)
+				(width 0)
+				(fill yes)
+			)
+		)
+	)
+	(pad "5" smd custom
+		(at -21 0)
+		(size 0.5 0.5)
+		(layers "F.Cu")
+		(options
+			(clearance outline)
+			(anchor circle)
+		)
+		(primitives
+			(gr_poly
+				(pts
+					(xy 5 -5)
+					(xy 5 5)
+					(xy -5 5)
+					(xy -5 -5)
+				)
+				(width 0)
+				(fill yes)
+			)
+		)
+	)
+	(pad "6" smd custom
+		(at -7 0)
+		(size 0.5 0.5)
+		(layers "F.Cu")
+		(options
+			(clearance outline)
+			(anchor circle)
+		)
+		(primitives
+			(gr_poly
+				(pts
+					(xy 5 -5)
+					(xy 5 5)
+					(xy -5 5)
+					(xy -5 -5)
+				)
+				(width 0)
+				(fill yes)
+			)
+		)
+	)
+	(pad "7" smd custom
+		(at 7 0)
+		(size 0.5 0.5)
+		(layers "F.Cu")
+		(options
+			(clearance outline)
+			(anchor circle)
+		)
+		(primitives
+			(gr_poly
+				(pts
+					(xy 5 -5)
+					(xy 5 5)
+					(xy -5 5)
+					(xy -5 -5)
+				)
+				(width 0)
+				(fill yes)
+			)
+		)
+	)
+	(pad "8" smd custom
+		(at 21 0)
+		(size 0.5 0.5)
+		(layers "F.Cu")
+		(options
+			(clearance outline)
+			(anchor circle)
+		)
+		(primitives
+			(gr_poly
+				(pts
+					(xy 5 -5)
+					(xy 5 5)
+					(xy -5 5)
+					(xy -5 -5)
+				)
+				(width 0)
+				(fill yes)
+			)
+		)
+	)
+	(pad "9" smd custom
+		(at -21 14)
+		(size 0.5 0.5)
+		(layers "F.Cu")
+		(options
+			(clearance outline)
+			(anchor circle)
+		)
+		(primitives
+			(gr_poly
+				(pts
+					(xy 5 -5)
+					(xy 5 5)
+					(xy -5 5)
+					(xy -5 -5)
+				)
+				(width 0)
+				(fill yes)
+			)
+		)
+	)
+	(pad "10" smd custom
+		(at -7 14)
+		(size 0.5 0.5)
+		(layers "F.Cu")
+		(options
+			(clearance outline)
+			(anchor circle)
+		)
+		(primitives
+			(gr_poly
+				(pts
+					(xy 5 -5)
+					(xy 5 5)
+					(xy -5 5)
+					(xy -5 -5)
+				)
+				(width 0)
+				(fill yes)
+			)
+		)
+	)
+	(pad "11" smd custom
+		(at 7 14)
+		(size 0.5 0.5)
+		(layers "F.Cu")
+		(options
+			(clearance outline)
+			(anchor circle)
+		)
+		(primitives
+			(gr_poly
+				(pts
+					(xy 5 -5)
+					(xy 5 5)
+					(xy -5 5)
+					(xy -5 -5)
+				)
+				(width 0)
+				(fill yes)
+			)
+		)
+	)
+	(pad "12" smd custom
+		(at 21 14)
+		(size 0.5 0.5)
+		(layers "F.Cu")
+		(options
+			(clearance outline)
+			(anchor circle)
+		)
+		(primitives
+			(gr_poly
+				(pts
+					(xy 5 -5)
+					(xy 5 5)
+					(xy -5 5)
+					(xy -5 -5)
+				)
+				(width 0)
+				(fill yes)
+			)
+		)
+	)
+	(embedded_fonts no)
+)

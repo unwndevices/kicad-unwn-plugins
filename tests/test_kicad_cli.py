@@ -15,13 +15,21 @@ from _board import support_board_text, trackpad_net_map, widget_board_text
 
 from captouch.export import footprint, symbol
 from captouch.geometry import (
+    build_keypad,
     build_mutual_slider,
     build_slider,
     build_support,
     build_trackpad,
     build_wheel,
 )
-from captouch.params import MutualSliderParams, SliderParams, TrackpadParams, WheelParams
+from captouch.params import (
+    BUTTON_SHAPES,
+    KeypadParams,
+    MutualSliderParams,
+    SliderParams,
+    TrackpadParams,
+    WheelParams,
+)
 
 KICAD_CLI = shutil.which("kicad-cli")
 pytestmark = pytest.mark.skipif(KICAD_CLI is None, reason="kicad-cli not installed")
@@ -345,6 +353,52 @@ def test_mutual_slider_footprint_renders(tmp_path):
 
 
 # --------------------------------------------------------------------------- #
+# keypad (discrete self-cap button grid)
+# --------------------------------------------------------------------------- #
+@pytest.mark.parametrize("shape", BUTTON_SHAPES)
+@pytest.mark.parametrize("rows,cols", [(2, 3), (3, 4)])
+def test_keypad_drc_clean(shape, rows, cols, tmp_path):
+    # Buttons are independent netless copper (like a slider): an empty `violations`
+    # proves every button keeps clearance from its neighbours at the default 4 mm
+    # separation, and an empty `unconnected_items` (no nets) confirms there is
+    # nothing left dangling.
+    geo = build_keypad(
+        KeypadParams(name="CT_Keypad", num_rows=rows, num_cols=cols, button_shape=shape)
+    )
+    board = tmp_path / "board.kicad_pcb"
+    board.write_text(widget_board_text(geo))
+    report = _drc(board, tmp_path / "drc.json")
+    assert report["violations"] == [], report["violations"]
+    assert report["unconnected_items"] == []
+
+
+@pytest.mark.parametrize("shape", BUTTON_SHAPES)
+def test_keypad_footprint_renders(shape, tmp_path):
+    geo = build_keypad(KeypadParams(name="CT_Keypad", num_rows=2, num_cols=3, button_shape=shape))
+    pretty = tmp_path / "lib.pretty"
+    pretty.mkdir()
+    (pretty / "CT_Keypad.kicad_mod").write_text(footprint.keypad_footprint_text(geo))
+    svg_dir = tmp_path / "svg"
+    svg_dir.mkdir()
+    proc = _run(
+        "fp", "export", "svg", "--footprint", "CT_Keypad", "--output", str(svg_dir), str(pretty)
+    )
+    assert proc.returncode == 0 and "Error" not in proc.stdout, proc.stdout + proc.stderr
+    assert (svg_dir / "CT_Keypad.svg").exists()
+
+
+def test_keypad_drc_catches_undersized_gap(tmp_path):
+    # Negative control: a sub-clearance button-to-button gap MUST be flagged,
+    # proving the DRC gate is real and not vacuously passing on the spaced grid.
+    geo = build_keypad(KeypadParams(name="TinyGap", num_rows=2, num_cols=2, gap=0.05))
+    board = tmp_path / "tiny.kicad_pcb"
+    board.write_text(widget_board_text(geo))
+    report = _drc(board, tmp_path / "tiny.json")
+    clearances = [v for v in report["violations"] if v["type"] == "clearance"]
+    assert clearances, "expected clearance violations for a 0.05 mm button gap"
+
+
+# --------------------------------------------------------------------------- #
 # support copper (Phase 8): hatched ground + guard / ESD ring
 # --------------------------------------------------------------------------- #
 # kicad-cli does not refill footprint-embedded zones, so support_board_text lifts
@@ -369,6 +423,11 @@ SUPPORT_CASES = [
     ("slider_guard", build_slider, SliderParams(name="S", guard_ring=True)),
     ("slider_both", build_slider, SliderParams(name="S", ground_hatch=True, guard_ring=True)),
     ("wheel_both", build_wheel, WheelParams(name="W", ground_hatch=True, guard_ring=True)),
+    (
+        "keypad_both",
+        build_keypad,
+        KeypadParams(name="K", num_rows=2, num_cols=2, ground_hatch=True, guard_ring=True),
+    ),
     (
         "trackpad_both",
         build_trackpad,
