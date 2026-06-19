@@ -114,6 +114,9 @@ class WheelPanel(PanelBase):
         # Optional support copper (hatched ground + guard ring), default off.
         root.addWidget(self._build_support_group())
 
+        # Overlay / sensitivity inputs (advisory only; no geometry effect).
+        root.addWidget(self._build_sensing_group())
+
         root.addStretch(1)
 
         self.name.textEdited.connect(self._emit)
@@ -215,6 +218,7 @@ class WheelPanel(PanelBase):
             relax_finger_constraint=self.relax.isChecked(),
             name=self.name.text() or "CT_Wheel",
             **self._support_kwargs(),
+            **self._sensing_kwargs(),
         )
 
     def params(self) -> WheelParams:
@@ -249,6 +253,7 @@ class WheelPanel(PanelBase):
             self.tooth_depth.setValue(p.amplitude)
 
             self._load_support(p)
+            self._load_sensing(p)
             self._on_shape()
             self._on_diameter_mode()  # count-driven gating after load
         finally:

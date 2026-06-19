@@ -174,6 +174,53 @@ class PanelBase(QWidget):
         self.guard_mask_open.setChecked(p.guard_mask_open)
         self._on_support_toggle()
 
+    # -- overlay / sensitivity (advisory inputs, default: no overlay) ------- #
+    def _build_sensing_group(self) -> QGroupBox:
+        """An "Overlay / sensitivity (advisory)" group shared by every widget panel.
+
+        Feeds the Phase-9 advisories only — none of these fields change the emitted
+        geometry. Spin-box attributes are named exactly after the params fields
+        (``overlay_thickness`` … ``board_thickness``) so :meth:`show_error`
+        highlights the right control. ``overlay_thickness`` 0 means "no overlay
+        specified" and leaves the overlay-dependent advisories silent.
+        """
+        box = QGroupBox("Overlay / sensitivity (advisory)")
+        form = QFormLayout(box)
+        self.overlay_thickness = self._dspin(0.0, 20.0, 0.1)
+        self.overlay_er = self._dspin(1.0, 12.0, 0.1)
+        self.board_thickness = self._dspin(0.1, 5.0, 0.1)
+        form.addRow("Overlay thickness (mm)", self.overlay_thickness)
+        form.addRow("Overlay εr", self.overlay_er)
+        form.addRow("Board thickness (mm)", self.board_thickness)
+        self._set_tooltips(
+            {
+                self.overlay_thickness: (
+                    "Front-panel overlay thickness (mm). 0 = none → the overlay sizing "
+                    "and sensitivity advisories stay off (guidelines §5.7)."
+                ),
+                self.overlay_er: "Overlay relative permittivity εr (acrylic ~3, glass ~8; §5.7).",
+                self.board_thickness: (
+                    "FR-4 substrate thickness (mm) to the nearest ground, for the "
+                    "parasitic-Cp estimate (§5.9/§5.10). Default 1.6."
+                ),
+            }
+        )
+        return box
+
+    def _sensing_kwargs(self) -> dict:
+        """The overlay / board-stack field overrides to splice into ``params()``."""
+        return dict(
+            overlay_thickness=self.overlay_thickness.value(),
+            overlay_er=self.overlay_er.value(),
+            board_thickness=self.board_thickness.value(),
+        )
+
+    def _load_sensing(self, p) -> None:
+        """Load *p*'s overlay / board fields into the form (call under ``_loading``)."""
+        self.overlay_thickness.setValue(p.overlay_thickness)
+        self.overlay_er.setValue(p.overlay_er)
+        self.board_thickness.setValue(p.board_thickness)
+
     # -- tooltips & inline validation --------------------------------------- #
     @staticmethod
     def _set_tooltips(tips: dict[QWidget, str]) -> None:

@@ -129,6 +129,9 @@ class TrackpadPanel(PanelBase):
         # Optional support copper (hatched ground + guard ring), default off.
         root.addWidget(self._build_support_group())
 
+        # Overlay / sensitivity inputs (advisory only; no geometry effect).
+        root.addWidget(self._build_sensing_group())
+
         root.addStretch(1)
 
         self.name.textEdited.connect(self._emit)
@@ -251,6 +254,7 @@ class TrackpadPanel(PanelBase):
         if shape == "circle" and not self.radius_auto.isChecked():
             kw["radius"] = self.radius.value()
         kw.update(self._support_kwargs())
+        kw.update(self._sensing_kwargs())
         return TrackpadParams(**kw)
 
     def set_params(self, p: TrackpadParams) -> None:
@@ -279,6 +283,7 @@ class TrackpadPanel(PanelBase):
             if p.radius is not None:
                 self.radius.setValue(p.radius)
             self._load_support(p)
+            self._load_sensing(p)
             self._on_mask()
             self._on_size_mode()
         finally:

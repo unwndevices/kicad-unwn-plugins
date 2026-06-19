@@ -639,3 +639,60 @@ def test_invalid_support_outlines_offending_field(qapp):
     win.panel.set_params(SliderParams())  # valid again
     win._rebuild()
     assert not win.panel.ground_hatch_pitch.styleSheet()  # cleared
+
+
+# --------------------------------------------------------------------------- #
+# sensitivity / filtering advisories (overlay inputs + banner/info line)
+# --------------------------------------------------------------------------- #
+@pytest.mark.parametrize(
+    "factory_path",
+    [
+        "captouch.gui.panel.ParamPanel",
+        "captouch.gui.wheel_panel.WheelPanel",
+        "captouch.gui.trackpad_panel.TrackpadPanel",
+    ],
+)
+def test_overlay_fields_flow_into_params(qapp, factory_path):
+    import importlib
+
+    mod_name, cls_name = factory_path.rsplit(".", 1)
+    panel = getattr(importlib.import_module(mod_name), cls_name)()
+    panel.overlay_thickness.setValue(1.5)
+    panel.overlay_er.setValue(7.8)
+    panel.board_thickness.setValue(0.8)
+    p = panel.params()
+    assert p.overlay_thickness == pytest.approx(1.5)
+    assert p.overlay_er == pytest.approx(7.8)
+    assert p.board_thickness == pytest.approx(0.8)
+
+
+def test_series_r_advice_line_always_shown(qapp):
+    from captouch.gui.app import MainWindow
+
+    win = MainWindow()  # default slider, no overlay
+    win._rebuild()
+    assert not win._advice_line.isHidden()  # isVisible() needs a shown window
+    assert "560 Ω" in win._advice_line.text()
+
+
+def test_undersized_overlay_raises_warning_banner(qapp):
+    from captouch.gui.app import MainWindow
+
+    win = MainWindow()
+    # segment_height 8 mm < finger 8 + 2 x 2 mm overlay = 12 mm -> blocking advisory.
+    win.panel.set_params(SliderParams(segment_height=8.0, overlay_thickness=2.0))
+    win._rebuild()
+    assert not win._fab_banner.isHidden()  # isVisible() needs a shown window
+    assert "electrode vs overlay sizing" in win._fab_banner.text()
+    # the full guidance is on the tooltip
+    assert "Microchip AN2934" in win._fab_banner.toolTip()
+
+
+def test_sensing_fields_load_from_params(qapp):
+    from captouch.gui.trackpad_panel import TrackpadPanel
+
+    panel = TrackpadPanel()
+    panel.set_params(TrackpadParams(overlay_thickness=2.0, overlay_er=4.5, board_thickness=1.0))
+    assert panel.overlay_thickness.value() == pytest.approx(2.0)
+    assert panel.overlay_er.value() == pytest.approx(4.5)
+    assert panel.board_thickness.value() == pytest.approx(1.0)

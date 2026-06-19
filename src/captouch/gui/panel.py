@@ -121,6 +121,9 @@ class ParamPanel(PanelBase):
         # Optional support copper (hatched ground + guard ring), default off.
         root.addWidget(self._build_support_group())
 
+        # Overlay / sensitivity inputs (advisory only; no geometry effect).
+        root.addWidget(self._build_sensing_group())
+
         root.addStretch(1)
 
         self.name.textEdited.connect(self._emit)
@@ -226,6 +229,7 @@ class ParamPanel(PanelBase):
             relax_finger_constraint=self.relax.isChecked(),
             name=self.name.text() or "CT_Slider",
             **self._support_kwargs(),
+            **self._sensing_kwargs(),
         )
 
     def params(self) -> SliderParams:
@@ -261,6 +265,7 @@ class ParamPanel(PanelBase):
             self.tooth_depth.setValue(p.amplitude)
 
             self._load_support(p)
+            self._load_sensing(p)
             self._on_shape()  # sync enable-state to the loaded shape
             self._on_length_mode()  # count-driven gating after load
         finally:

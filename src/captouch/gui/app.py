@@ -38,6 +38,7 @@ from ..params import (
     SliderError,
     TrackpadParams,
     WheelParams,
+    check_advisories,
     check_fab,
     params_from_json,
     params_to_json,
@@ -52,9 +53,15 @@ __all__ = ["MainWindow", "run", "main"]
 _OK_STYLE = "color: #8fce8f;"
 _ERR_STYLE = "color: #e88; font-weight: 600;"
 
-# Amber-on-dark advisory banner for fab-rule warnings (non-blocking).
+# Amber-on-dark advisory banner for fab-rule + blocking design warnings.
 _FAB_BANNER_STYLE = (
     "QLabel { background: #3a2f1a; color: #f0c674; border: 1px solid #6b5630; "
+    "border-radius: 6px; padding: 6px 10px; }"
+)
+
+# Quieter blue-on-dark line for informational advisories (series-R, sensitivity).
+_ADVICE_STYLE = (
+    "QLabel { background: #1c2a38; color: #8fbcdb; border: 1px solid #2f4a63; "
     "border-radius: 6px; padding: 6px 10px; }"
 )
 
@@ -154,6 +161,7 @@ class MainWindow(QMainWindow):
         rl.addLayout(self._build_layer_bar())
         rl.addWidget(self.preview, 1)
         rl.addWidget(self._build_fab_banner())
+        rl.addWidget(self._build_advice_line())
         rl.addLayout(self._build_export_bar())
 
         central = QWidget()
@@ -183,12 +191,20 @@ class MainWindow(QMainWindow):
         return bar
 
     def _build_fab_banner(self) -> QLabel:
-        """The non-blocking amber banner that lists current fab-rule warnings."""
+        """The amber banner that lists current fab-rule + blocking design warnings."""
         self._fab_banner = QLabel()
         self._fab_banner.setStyleSheet(_FAB_BANNER_STYLE)
         self._fab_banner.setWordWrap(True)
         self._fab_banner.setVisible(False)
         return self._fab_banner
+
+    def _build_advice_line(self) -> QLabel:
+        """The quiet blue line for informational advisories (series-R, sensitivity)."""
+        self._advice_line = QLabel()
+        self._advice_line.setStyleSheet(_ADVICE_STYLE)
+        self._advice_line.setWordWrap(True)
+        self._advice_line.setVisible(False)
+        return self._advice_line
 
     def _build_export_bar(self) -> QHBoxLayout:
         bar = QHBoxLayout()
@@ -232,6 +248,7 @@ class MainWindow(QMainWindow):
             self.panel.show_error(str(exc))  # outline the field(s) the error names
             self._export_btn.setEnabled(self._geo is not None)
             self._fab_banner.setVisible(False)
+            self._advice_line.setVisible(False)
             return
 
         self.panel.clear_error()
@@ -240,19 +257,41 @@ class MainWindow(QMainWindow):
         self._export_btn.setEnabled(True)
         self._status.setStyleSheet(_OK_STYLE)
         self._status.setText(_summary(geo))
-        self._update_fab_banner(geo)
+        self._update_advice(geo)
 
-    def _update_fab_banner(self, geo: WidgetGeometry) -> None:
-        """Re-check the geometry against the selected fab profile and show issues."""
+    def _update_advice(self, geo: WidgetGeometry) -> None:
+        """Refresh the warning banner + info line from fab checks and advisories.
+
+        Amber banner: fab violations + blocking design advisories (sizing / Cp);
+        quiet blue line: the informational advisories (the series-R recommendation,
+        always; the overlay sensitivity note when an overlay is set). Full text of
+        each warning is on the banner's tooltip.
+        """
         profile = self._fab_profile.currentText()
         violations = check_fab(geo.params, profile)
-        if not violations:
+        advisories = check_advisories(geo.params)
+        blocking = [a for a in advisories if a.blocks]
+        info = [a for a in advisories if not a.blocks]
+
+        warns = [f"{v.feature} {v.value:.3f} < {v.limit:.3f} mm" for v in violations]
+        warns += [a.feature for a in blocking]
+        if warns:
+            plural = "issue" if len(warns) == 1 else "issues"
+            self._fab_banner.setText(
+                f"⚠ {len(warns)} design {plural} vs '{profile}': {'; '.join(warns)}"
+            )
+            self._fab_banner.setToolTip(
+                "\n".join([v.message for v in violations] + [a.message for a in blocking])
+            )
+            self._fab_banner.setVisible(True)
+        else:
             self._fab_banner.setVisible(False)
-            return
-        items = "; ".join(f"{v.feature} {v.value:.3f} < {v.limit:.3f} mm" for v in violations)
-        plural = "issue" if len(violations) == 1 else "issues"
-        self._fab_banner.setText(f"⚠ {len(violations)} fab {plural} vs '{profile}': {items}")
-        self._fab_banner.setVisible(True)
+
+        if info:
+            self._advice_line.setText("ⓘ  " + "    ".join(a.message for a in info))
+            self._advice_line.setVisible(True)
+        else:
+            self._advice_line.setVisible(False)
 
     def export_to(self, directory: Path) -> tuple[Path, Path]:
         """Write the current geometry's footprint + symbol into *directory*.
