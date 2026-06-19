@@ -30,11 +30,12 @@ from PySide6.QtWidgets import (
 )
 
 from ..export import footprint, symbol
-from ..geometry import TrackpadGeometry, WheelGeometry
+from ..geometry import MutualSliderGeometry, TrackpadGeometry, WheelGeometry
 from ..geometry._base import GeometryError
 from ..params import (
     DEFAULT_PROFILE,
     FAB_PROFILES,
+    MutualSliderParams,
     SliderError,
     TrackpadParams,
     WheelParams,
@@ -43,6 +44,7 @@ from ..params import (
     params_from_json,
     params_to_json,
 )
+from .mutual_slider_panel import MutualSliderPanel
 from .panel import ParamPanel
 from .preview import LAYERS, PreviewView, WidgetGeometry
 from .trackpad_panel import TrackpadPanel
@@ -65,12 +67,29 @@ _ADVICE_STYLE = (
     "border-radius: 6px; padding: 6px 10px; }"
 )
 
-# (label, panel factory) per selectable widget type.
-_WIDGETS = (("Slider", ParamPanel), ("Wheel", WheelPanel), ("Trackpad", TrackpadPanel))
+# (label, panel factory) per selectable widget type. Mutual slider is appended
+# (index 3) so the existing widget-switcher indices stay stable.
+_WIDGETS = (
+    ("Slider", ParamPanel),
+    ("Wheel", WheelPanel),
+    ("Trackpad", TrackpadPanel),
+    ("Mutual slider", MutualSliderPanel),
+)
 
 
 def _summary(geo: WidgetGeometry) -> str:
     """One-line description of the built geometry for the status bar."""
+    if isinstance(geo, MutualSliderGeometry):
+        # A 1-row trackpad; geo.params is the mapped TrackpadParams
+        # (num_cols = Tx drive electrodes, num_rows = Rx sense rows).
+        mp = geo.params
+        minx, miny, maxx, maxy = geo.bounds
+        rows = "row" if mp.num_rows == 1 else "rows"
+        return (
+            f"mutual-cap slider — {mp.num_cols} Tx drive × {mp.num_rows} Rx sense {rows} "
+            f"({mp.num_nodes} nodes, {mp.num_pins} pins) · pitch {mp.diamond_pitch:.2f} "
+            f"gap {mp.diamond_gap:.2f} mm · extent {maxx - minx:.2f} × {maxy - miny:.2f} mm"
+        )
     if isinstance(geo, TrackpadGeometry):
         tp = geo.params
         minx, miny, maxx, maxy = geo.bounds
@@ -346,6 +365,8 @@ class MainWindow(QMainWindow):
     @staticmethod
     def _widget_index(p) -> int:
         """Selector index (matching _WIDGETS order) for a params object."""
+        if isinstance(p, MutualSliderParams):
+            return 3
         if isinstance(p, TrackpadParams):
             return 2
         if isinstance(p, WheelParams):

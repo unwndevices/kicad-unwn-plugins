@@ -15,17 +15,21 @@ import pytest
 
 from captouch.export import footprint, symbol
 from captouch.geometry import (
+    MutualSliderGeometry,
     TrackpadGeometry,
     WheelGeometry,
+    build_mutual_slider,
     build_slider,
     build_trackpad,
     build_wheel,
 )
 from captouch.geometry._base import polygon_points
 from captouch.params import (
+    MUTUAL_SLIDER_PRESETS,
     SLIDER_PRESETS,
     TRACKPAD_PRESETS,
     WHEEL_PRESETS,
+    MutualSliderParams,
     SliderParams,
     TrackpadParams,
 )
@@ -430,6 +434,97 @@ def test_trackpad_export_matches_preview(qapp, tmp_path):
     assert sym_path.read_text() == symbol.trackpad_symbol_lib_text(geo)
     # One distinct pad number per Rx/Tx line, but many pads (multi-layer nets).
     assert fp_path.read_text().count("(pad ") > len(geo.nets)
+
+
+# --------------------------------------------------------------------------- #
+# widget switcher — mutual slider
+# --------------------------------------------------------------------------- #
+def test_mutual_slider_panel_defaults_build_valid_geometry(qapp):
+    from captouch.gui.mutual_slider_panel import MutualSliderPanel
+
+    panel = MutualSliderPanel()
+    geo = build_mutual_slider(panel.params())  # must not raise
+    assert len(geo.nets) == MutualSliderParams().num_pins
+
+
+@pytest.mark.parametrize("key", sorted(MUTUAL_SLIDER_PRESETS))
+def test_mutual_slider_preset_roundtrips_through_panel(qapp, key):
+    from captouch.gui.mutual_slider_panel import MutualSliderPanel
+
+    preset = MUTUAL_SLIDER_PRESETS[key]
+    panel = MutualSliderPanel()
+    panel.set_params(preset)
+    got = panel.params()
+    assert (got.num_segments, got.sense_rows) == (preset.num_segments, preset.sense_rows)
+    assert got.diamond_pitch == pytest.approx(preset.diamond_pitch)
+    assert got.diamond_gap == pytest.approx(preset.diamond_gap)
+    build_mutual_slider(got)  # the loaded params still build
+
+
+def test_switch_to_mutual_slider_builds_geometry(qapp):
+    from captouch.gui.app import MainWindow
+    from captouch.gui.mutual_slider_panel import MutualSliderPanel
+
+    win = MainWindow()
+    win._on_widget_changed(3)  # 0 Slider, 1 Wheel, 2 Trackpad, 3 Mutual slider
+    assert isinstance(win.panel, MutualSliderPanel)
+    assert isinstance(win.preview.geometry_model, MutualSliderGeometry)
+    assert "mutual-cap slider" in win._status.text()
+
+
+def test_mutual_slider_panel_length_driven_derives_count(qapp):
+    from captouch.gui.mutual_slider_panel import MutualSliderPanel
+
+    panel = MutualSliderPanel()
+    assert not panel.length_driven.isChecked()
+    assert panel.num_segments.isEnabled() and not panel.target_length.isEnabled()
+
+    panel.length_driven.setChecked(True)
+    panel.target_length.setValue(60.0)
+    p = panel.params()
+    assert abs(p.total_length - 60.0) <= p.diamond_pitch / 2 + 1e-9
+    assert not panel.num_segments.isEnabled()  # read-only in size mode
+    build_mutual_slider(p)
+    # Loading a preset switches back to count-driven.
+    panel.set_params(MUTUAL_SLIDER_PRESETS["microchip"])
+    assert not panel.length_driven.isChecked()
+
+
+def test_mutual_slider_preview_matches_geometry(qapp):
+    from captouch.gui.app import MainWindow
+
+    win = MainWindow()
+    win._on_widget_changed(3)
+    win.panel.set_params(MUTUAL_SLIDER_PRESETS["dual"])
+    win._rebuild()
+    geo = win.preview.geometry_model
+    for net in geo.nets:
+        expected = [polygon_points(p) for p in net.bcu] + [polygon_points(p) for p in net.fcu]
+        assert win.preview.net_polygon_points(net.pad_number) == expected
+
+
+def test_mutual_slider_export_matches_preview(qapp, tmp_path):
+    from captouch.gui.app import MainWindow
+
+    win = MainWindow()
+    win._on_widget_changed(3)
+    win.panel.set_params(MUTUAL_SLIDER_PRESETS["microchip"])
+    win._rebuild()
+    geo = win.preview.geometry_model
+
+    fp_path, sym_path = win.export_to(tmp_path)
+    assert fp_path.read_text() == footprint.mutual_slider_footprint_text(geo)
+    assert sym_path.read_text() == symbol.mutual_slider_symbol_lib_text(geo)
+    assert fp_path.read_text().count("(pad ") > len(geo.nets)  # multi-layer nets
+
+
+def test_load_params_switches_to_mutual_slider(qapp):
+    from captouch.gui.app import MainWindow
+
+    win = MainWindow()  # starts on the slider panel
+    win.load_params(MutualSliderParams(num_segments=6, sense_rows=1, name="CT_MS"))
+    assert isinstance(win._geo, MutualSliderGeometry)  # selector switched
+    assert win.panel.params().num_segments == 6
 
 
 # --------------------------------------------------------------------------- #
