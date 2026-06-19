@@ -65,8 +65,12 @@ _LAYER_COLOR = dict(_LAYERS)
 
 
 def _num(v: float) -> str:
-    """Format a coordinate as a DXF real (fixed 6 dp; geometry is rounded to 4)."""
-    return f"{float(v):.6f}"
+    """Format a coordinate as a DXF real (fixed 6 dp; geometry is rounded to 4).
+
+    ``+ 0.0`` normalises a negative zero (which the Y flip produces at ``y == 0``)
+    to ``0.000000`` — valid either way, but tidier.
+    """
+    return f"{float(v) + 0.0:.6f}"
 
 
 class _Drawing:
