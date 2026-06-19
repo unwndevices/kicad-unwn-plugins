@@ -150,6 +150,20 @@ captouch trackpad --fab-profile oshpark            # warns: via annular ring bel
 captouch trackpad --fab-profile oshpark --strict   # refuses to generate (exit 3)
 ```
 
+### Design advisories
+
+A second, *electrical* advisory layer (guidelines §§5.5/5.7/5.10) — sensitivity, not
+manufacturability — runs alongside the fab guards and changes no geometry. It recommends a
+**series resistor** (560 Ω self / 2 kΩ mutual, placed at the MCU; also embedded as a hidden
+`Series_R` symbol property), checks **electrode-vs-overlay sizing** and a parallel-plate **Cp budget**
+(`--overlay-thickness` / `--overlay-er` / `--board-thickness`), and shares the warn/`--strict` channel
+(the actionable sizing/Cp items can block; the recommendations never do). The GUI surfaces them in the
+amber banner plus a quieter info line.
+
+```sh
+captouch slider --segment-height 8 --overlay-thickness 2   # warns: finger overhangs the electrode
+```
+
 ### Standalone binary
 
 For users without Python, PyInstaller freezes the CLI + GUI into one file:

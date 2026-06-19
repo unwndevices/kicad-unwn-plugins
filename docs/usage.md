@@ -228,6 +228,45 @@ and the caveat under
 [Validating with kicad-cli](#validating-with-kicad-cli) about refilling these
 zones.
 
+### Sensitivity & filtering advisories (optional)
+
+Every generator also runs a set of **electrical** design advisories (guidelines
+§§5.5/5.7/5.10) — the counterpart to the [fab-rule guards](#fab-rule-guards), but
+about sensitivity rather than manufacturability. They print as guidance after
+generation and **never change the emitted geometry**.
+
+| Flag | Meaning |
+|---|---|
+| `--overlay-thickness MM` | Front-panel overlay thickness. `0`/unset = *no overlay specified* → the overlay-dependent advisories stay off. |
+| `--overlay-er ER` | Overlay relative permittivity εr (acrylic ~3, glass ~8). |
+| `--board-thickness MM` | FR-4 substrate thickness used for the parasitic-Cp estimate (default 1.6). |
+
+The checks:
+
+- **Series resistor** (always): the recommended value — **560 Ω** self-cap
+  (slider/wheel) or **2 kΩ** mutual-cap (trackpad) — placed within ~10 mm of the
+  *MCU* pin (Infineon AN85951). It is also embedded in the symbol as a hidden
+  **`Series_R`** property, so the guidance rides along with the part. No resistor
+  is added to the electrode footprint — a series R belongs at the controller.
+- **Electrode vs overlay sizing** (when `--overlay-thickness` is set): a self-cap
+  electrode's transverse dimension should be ≥ `finger + 2·overlay`; a mutual-cap
+  trackpad's overlay should sit in the ~0.5–3 mm window (§5.7).
+- **Parasitic Cp budget**: a per-channel parallel-plate *estimate* vs ~30 pF
+  self / ~16 pF mutual (Microchip AT09363, §5.10). An order-of-magnitude figure.
+
+Like the fab guards these are warnings by default; `--strict` promotes the
+**actionable** ones (sizing, Cp over budget) to a hard block (exit 3). The series-R
+recommendation and the sensitivity note are informational and never block.
+
+```
+$ captouch slider --segment-height 8 --overlay-thickness 2
+…
+advisory: 3 design advisory(ies) (guidelines §§5.5/5.7/5.10):
+  - recommend a 560 Ω series resistor on each sense line, placed within ~10 mm of the MCU pin …
+  - segment height 8.00 mm is below the finger + 2·overlay minimum 12.00 mm … Widen it or thin the overlay
+  - overlay: 2.00 mm, εr 3.0 (εr/thickness ≈ 1.5 mm⁻¹; signal ∝ εr/thickness) …
+```
+
 ### Saving & loading parameters
 
 Any generator can dump the **resolved** parameters it used as JSON with
@@ -307,6 +346,12 @@ captouch gui            # or: captouch-gui
   (F.Cu)* checkbox with width / gap / break spins plus a mask-open toggle. Each
   feature's spins enable only when its checkbox is ticked; toggling either redraws
   the preview and adds the zone to the export. Both are off by default.
+- Every panel also has an **Overlay / sensitivity (advisory)** group (overlay
+  thickness / εr / board thickness) feeding the design advisories — these change no
+  geometry. The amber banner additionally lists any blocking advisory (electrode
+  sizing / Cp), with the full guidance on its tooltip; a quieter blue line below it
+  shows the informational advisories (the series-R recommendation, always; the
+  overlay sensitivity note when an overlay is set).
 - The **preview** renders the *same* geometry the exporters serialise (WYSIWYG),
   with zoom/pan, **Fit**, and per-layer toggles (incl. `F.Cu`, `B.Cu`, vias for the
   trackpad, and the **Ground pour** / **Guard ring** support copper).
