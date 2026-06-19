@@ -13,7 +13,7 @@ from __future__ import annotations
 
 import pytest
 
-from captouch.export import footprint, symbol
+from captouch.export import dxf, footprint, symbol
 from captouch.geometry import (
     KeypadGeometry,
     MutualSliderGeometry,
@@ -877,3 +877,43 @@ def test_sensing_fields_load_from_params(qapp):
     assert panel.overlay_thickness.value() == pytest.approx(2.0)
     assert panel.overlay_er.value() == pytest.approx(4.5)
     assert panel.board_thickness.value() == pytest.approx(1.0)
+
+
+# --------------------------------------------------------------------------- #
+# DXF export (mechanical / CAD handoff)
+# --------------------------------------------------------------------------- #
+def test_export_dxf_matches_geometry(qapp, tmp_path):
+    from captouch.gui.app import MainWindow
+
+    win = MainWindow()
+    win.panel.set_params(SLIDER_PRESETS["microchip"])
+    win._rebuild()
+    geo = win.preview.geometry_model
+
+    out = tmp_path / "part.dxf"
+    written = win.write_dxf(out)
+    # Byte-identical to the exporter's output for the geometry on screen.
+    assert written == out
+    assert out.read_text() == dxf.widget_dxf_text(geo)
+    assert out.read_text().rstrip().endswith("EOF")
+
+
+def test_export_dxf_works_for_trackpad(qapp, tmp_path):
+    from captouch.gui.app import MainWindow
+
+    win = MainWindow()
+    win._selector.setCurrentIndex(2)  # Trackpad
+    win.panel.set_params(TrackpadParams(name="T", num_rows=3, num_cols=3))
+    win._rebuild()
+    out = tmp_path / "t.dxf"
+    win.write_dxf(out)
+    assert out.read_text() == dxf.widget_dxf_text(win.preview.geometry_model)
+
+
+def test_export_dxf_without_geometry_raises(qapp, tmp_path):
+    from captouch.gui.app import MainWindow
+
+    win = MainWindow()
+    win._geo = None
+    with pytest.raises(RuntimeError):
+        win.write_dxf(tmp_path / "x.dxf")

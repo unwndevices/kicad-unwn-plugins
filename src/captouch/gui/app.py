@@ -29,7 +29,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from ..export import footprint, symbol
+from ..export import dxf, footprint, symbol
 from ..geometry import KeypadGeometry, MutualSliderGeometry, TrackpadGeometry, WheelGeometry
 from ..geometry._base import GeometryError
 from ..params import (
@@ -260,6 +260,9 @@ class MainWindow(QMainWindow):
         self._export_btn = QPushButton("Export footprint + symbol…")
         self._export_btn.clicked.connect(self._on_export)
         bar.addWidget(self._export_btn)
+        self._dxf_btn = QPushButton("Export DXF…")
+        self._dxf_btn.clicked.connect(self._on_export_dxf)
+        bar.addWidget(self._dxf_btn)
         return bar
 
     # -- behaviour ---------------------------------------------------------- #
@@ -277,6 +280,7 @@ class MainWindow(QMainWindow):
             self._status.setText(f"⚠ {exc}")
             self.panel.show_error(str(exc))  # outline the field(s) the error names
             self._export_btn.setEnabled(self._geo is not None)
+            self._dxf_btn.setEnabled(self._geo is not None)
             self._fab_banner.setVisible(False)
             self._advice_line.setVisible(False)
             return
@@ -285,6 +289,7 @@ class MainWindow(QMainWindow):
         self._geo = geo
         self.preview.set_geometry(geo)
         self._export_btn.setEnabled(True)
+        self._dxf_btn.setEnabled(True)
         self._status.setStyleSheet(_OK_STYLE)
         self._status.setText(_summary(geo))
         self._update_advice(geo)
@@ -354,6 +359,33 @@ class MainWindow(QMainWindow):
         fp_path, sym_path = self.export_to(Path(directory))
         self._status.setStyleSheet(_OK_STYLE)
         self._status.setText(f"Exported {fp_path.name} and {sym_path.name} → {directory}")
+
+    def write_dxf(self, path: Path) -> Path:
+        """Write the current geometry as a DXF drawing to *path*.
+
+        Returns the path written. Raises if there is no valid geometry. The DXF
+        carries the exact geometry on screen (Y-flipped to a y-up CAD frame).
+        """
+        if self._geo is None:
+            raise RuntimeError("no valid geometry to export")
+        return dxf.write_widget_dxf(self._geo, path)
+
+    def _on_export_dxf(self) -> None:
+        if self._geo is None:
+            return
+        path, _ = QFileDialog.getSaveFileName(
+            self, "Export DXF", f"{self._geo.params.name}.dxf", "DXF drawing (*.dxf)"
+        )
+        if not path:
+            return
+        try:
+            self.write_dxf(Path(path))
+        except (OSError, RuntimeError) as exc:
+            self._status.setStyleSheet(_ERR_STYLE)
+            self._status.setText(f"⚠ could not export DXF: {exc}")
+            return
+        self._status.setStyleSheet(_OK_STYLE)
+        self._status.setText(f"Exported DXF → {path}")
 
     def _on_save_image(self) -> None:
         if self._geo is None:
