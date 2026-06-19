@@ -10,6 +10,12 @@ This module has **no KiCad, geometry, or Qt imports** — it is pure data.
 
 from __future__ import annotations
 
+from .advisory import (
+    Advisory,
+    check_advisories,
+    estimate_cp_pf,
+    recommended_series_r,
+)
 from .fab import (
     DEFAULT_PROFILE,
     FAB_PROFILES,
@@ -88,6 +94,10 @@ __all__ = [
     "FAB_PROFILES",
     "DEFAULT_PROFILE",
     "check_fab",
+    "Advisory",
+    "check_advisories",
+    "estimate_cp_pf",
+    "recommended_series_r",
     "has_support",
     "validate_support",
     "has_overlay",
