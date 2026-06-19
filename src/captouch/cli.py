@@ -1,10 +1,11 @@
 """Command-line frontend over the same engine the GUI uses.
 
-``captouch slider``    generates a slider footprint + symbol from flags/presets.
-``captouch wheel``     generates a wheel (rotary slider) footprint + symbol.
-``captouch trackpad``  generates a mutual-cap XY diamond trackpad footprint + symbol.
-``captouch gui``       launches the PySide6 live-preview app (needs the gui extra).
-``captouch spike``     emits the Phase-0 format-spike pair (kept as a smoke test).
+``captouch slider``         generates a self-cap slider footprint + symbol.
+``captouch mutual-slider``  generates a mutual-cap (CSX) diamond slider footprint + symbol.
+``captouch wheel``          generates a wheel (rotary slider) footprint + symbol.
+``captouch trackpad``       generates a mutual-cap XY diamond trackpad footprint + symbol.
+``captouch gui``            launches the PySide6 live-preview app (needs the gui extra).
+``captouch spike``          emits the Phase-0 format-spike pair (kept as a smoke test).
 """
 
 from __future__ import annotations
@@ -16,16 +17,25 @@ from typing import Any
 
 from . import __version__
 from .export import footprint, symbol
-from .geometry import build_slider, build_trackpad, build_wheel, net_tie_number
+from .geometry import (
+    build_mutual_slider,
+    build_slider,
+    build_trackpad,
+    build_wheel,
+    net_tie_number,
+)
 from .params import (
     CLIP_MODES,
     DEFAULT_PROFILE,
     DISABLE_AREA_FRACTION,
     FAB_PROFILES,
     MASK_SHAPES,
+    MUTUAL_SLIDER_PRESETS,
     SLIDER_PRESETS,
     TRACKPAD_PRESETS,
     WHEEL_PRESETS,
+    MutualSliderError,
+    MutualSliderParams,
     SliderError,
     SliderParams,
     TrackpadError,
@@ -367,6 +377,128 @@ def _add_slider_parser(sub: argparse._SubParsersAction) -> None:
     _add_sensing_args(p)
     _add_fab_args(p)
     p.set_defaults(func=_slider)
+
+
+# --------------------------------------------------------------------------- #
+# mutual-cap slider
+# --------------------------------------------------------------------------- #
+def _mutual_slider_params_from_args(args: argparse.Namespace) -> MutualSliderParams:
+    """Start from a preset (or defaults) and apply only explicitly-set flags."""
+    base = MUTUAL_SLIDER_PRESETS[args.preset] if args.preset else MutualSliderParams()
+
+    overrides: dict[str, Any] = {}
+    for flag, field in (
+        ("name", "name"),
+        ("num_segments", "num_segments"),
+        ("sense_rows", "sense_rows"),
+        ("diamond_pitch", "diamond_pitch"),
+        ("diamond_gap", "diamond_gap"),
+        ("bridge_width", "bridge_width"),
+        ("via_drill", "via_drill"),
+        ("via_diameter", "via_diameter"),
+    ):
+        value = getattr(args, flag)
+        if value is not None:
+            overrides[field] = value
+    overrides.update(_support_overrides(args))
+    overrides.update(_sensing_overrides(args))
+
+    params = replace(base, **overrides)
+    if args.length is not None:
+        if args.num_segments is not None:
+            raise MutualSliderError("size the slider with --length OR --num-segments, not both")
+        params = params.fit_to_length(args.length)
+    return params
+
+
+def _mutual_slider(args: argparse.Namespace) -> int:
+    if args.list_fab_profiles:
+        return _list_fab_profiles()
+    if args.list_presets:
+        for key, p in MUTUAL_SLIDER_PRESETS.items():
+            rows = "row" if p.sense_rows == 1 else "rows"
+            print(f"{key:10} {p.name}  ({p.num_segments} seg, {p.sense_rows} sense {rows})")
+        return 0
+
+    try:
+        params = _mutual_slider_params_from_args(args)
+        geo = build_mutual_slider(params)
+    except SliderError as exc:  # MutualSliderError subclasses SliderError
+        print(f"error: {exc}")
+        return 2
+
+    violations = check_fab(params, args.fab_profile)
+    advisories = check_advisories(params)
+    if args.strict and _strict_blocks(violations, advisories):
+        _report_fab(violations, args.fab_profile, strict=True)
+        _report_advisories(advisories, strict=True)
+        return 3
+
+    args.out.mkdir(parents=True, exist_ok=True)
+    fp_path = args.out / f"{params.name}.kicad_mod"
+    sym_path = args.out / f"{params.name}.kicad_sym"
+    fp_path.write_text(footprint.mutual_slider_footprint_text(geo), encoding="utf-8")
+    sym_path.write_text(symbol.mutual_slider_symbol_lib_text(geo), encoding="utf-8")
+    _maybe_save_params(args, params)
+
+    rows = "row" if params.sense_rows == 1 else "rows"
+    print(f"wrote {fp_path}")
+    print(f"wrote {sym_path}")
+    print(
+        f"  mutual-cap slider: {params.num_segments} Tx drive electrodes x "
+        f"{params.sense_rows} Rx sense {rows} ({params.num_nodes} nodes, {params.num_pins} pins), "
+        f"pitch={params.diamond_pitch:.2f} gap={params.diamond_gap:.2f} mm, "
+        f"extent {params.total_length:.2f} x {params.height:.2f} mm"
+    )
+    if args.length is not None:
+        print(
+            f"    sized from length: target {args.length:.2f} mm -> "
+            f"{params.total_length:.2f} mm ({params.num_segments} segments)"
+        )
+    _report_support(geo)
+    _report_fab(violations, args.fab_profile, strict=False)
+    _report_advisories(advisories, strict=False)
+    return 0
+
+
+def _add_mutual_slider_parser(sub: argparse._SubParsersAction) -> None:
+    p = sub.add_parser(
+        "mutual-slider", help="generate a mutual-cap (CSX) diamond slider footprint + symbol"
+    )
+    p.add_argument(
+        "-o",
+        "--out",
+        type=Path,
+        default=Path("examples"),
+        help="output directory (default: ./examples)",
+    )
+    p.add_argument("--list-presets", action="store_true", help="list presets and exit")
+    p.add_argument(
+        "--preset", choices=sorted(MUTUAL_SLIDER_PRESETS), help="start from a vendor preset"
+    )
+    p.add_argument("--name", help="footprint/symbol base name")
+    p.add_argument("--num-segments", type=int, help="Tx drive electrodes = position nodes (>=3)")
+    p.add_argument(
+        "--length",
+        type=float,
+        help="design from a target overall length (mm) instead of --num-segments: "
+        "derives the node count from the pitch (mutually exclusive with --num-segments)",
+    )
+    p.add_argument(
+        "--sense-rows", type=int, help="Rx sense rows (1 = single sense line, 2 = dual-row)"
+    )
+    p.add_argument("--diamond-pitch", type=float, help="drive-electrode centre spacing P (mm)")
+    p.add_argument("--diamond-gap", type=float, help="copper-to-copper gap A between diamonds (mm)")
+    p.add_argument("--bridge-width", type=float, help="F.Cu neck / B.Cu strap width (mm)")
+    p.add_argument("--via-drill", type=float, help="bridge via finished hole diameter (mm)")
+    p.add_argument("--via-diameter", type=float, help="bridge via outer copper diameter (mm)")
+    p.add_argument(
+        "--save-params", type=Path, metavar="FILE", help="also write the resolved params as JSON"
+    )
+    _add_support_args(p)
+    _add_sensing_args(p)
+    _add_fab_args(p)
+    p.set_defaults(func=_mutual_slider)
 
 
 # --------------------------------------------------------------------------- #
@@ -721,6 +853,10 @@ def _from_params(args: argparse.Namespace) -> int:
             tgeo = build_trackpad(params)
             fp_text = footprint.trackpad_footprint_text(tgeo)
             sym_text = symbol.trackpad_symbol_lib_text(tgeo)
+        elif isinstance(params, MutualSliderParams):
+            mgeo = build_mutual_slider(params)
+            fp_text = footprint.mutual_slider_footprint_text(mgeo)
+            sym_text = symbol.mutual_slider_symbol_lib_text(mgeo)
         else:
             sgeo = build_slider(params)
             fp_text = footprint.slider_footprint_text(sgeo)
@@ -832,6 +968,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--version", action="version", version=f"captouch {__version__}")
     sub = parser.add_subparsers(dest="command", required=True)
     _add_slider_parser(sub)
+    _add_mutual_slider_parser(sub)
     _add_wheel_parser(sub)
     _add_trackpad_parser(sub)
     _add_from_params_parser(sub)

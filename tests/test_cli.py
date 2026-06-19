@@ -43,6 +43,51 @@ def test_slider_length_conflicts_with_num_segments(tmp_path, capsys):
     assert "not both" in capsys.readouterr().out
 
 
+def test_mutual_slider_default_writes_files_and_exits_zero(tmp_path, capsys):
+    rc = main(["mutual-slider", "--out", str(tmp_path), "--name", "MS"])
+    assert rc == 0
+    assert (tmp_path / "MS.kicad_mod").exists()
+    assert (tmp_path / "MS.kicad_sym").exists()
+    out = capsys.readouterr().out
+    assert "mutual-cap slider" in out and "2 kΩ series resistor" in out  # mutual series-R
+
+
+def test_mutual_slider_length_sizes_node_count(tmp_path, capsys):
+    rc = main(["mutual-slider", "--out", str(tmp_path), "--name", "MS", "--length", "60"])
+    assert rc == 0
+    out = capsys.readouterr().out
+    assert "sized from length" in out and "target 60.00 mm" in out
+    assert (tmp_path / "MS.kicad_mod").exists()
+
+
+def test_mutual_slider_length_conflicts_with_num_segments(tmp_path, capsys):
+    rc = main(["mutual-slider", "--out", str(tmp_path), "--length", "60", "--num-segments", "5"])
+    assert rc == 2
+    assert "not both" in capsys.readouterr().out
+
+
+def test_mutual_slider_save_and_from_params_round_trip(tmp_path):
+    out, regen, pj = tmp_path / "a", tmp_path / "b", tmp_path / "p.json"
+    rc = main(
+        [
+            "mutual-slider",
+            "--out",
+            str(out),
+            "--name",
+            "MS",
+            "--sense-rows",
+            "2",
+            "--save-params",
+            str(pj),
+        ]
+    )
+    assert rc == 0 and pj.exists()
+    assert main(["from-params", str(pj), "--out", str(regen)]) == 0
+    # Regenerating from the saved params reproduces the files byte-for-byte.
+    assert (out / "MS.kicad_mod").read_text() == (regen / "MS.kicad_mod").read_text()
+    assert (out / "MS.kicad_sym").read_text() == (regen / "MS.kicad_sym").read_text()
+
+
 def test_wheel_outer_diameter_sizes_segment_count(tmp_path, capsys):
     rc = main(["wheel", "--out", str(tmp_path), "--name", "W", "--outer-diameter", "50"])
     assert rc == 0
