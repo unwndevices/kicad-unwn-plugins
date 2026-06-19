@@ -9,6 +9,7 @@ parameters see [`capacitive-touch-design-guidelines.md`](./capacitive-touch-desi
 - [The CLI](#the-cli)
 - [Fab-rule guards](#fab-rule-guards)
 - [The GUI](#the-gui)
+- [DXF export](#dxf-export)
 - [Using the output in KiCad](#using-the-output-in-kicad)
 - [Standalone binary](#standalone-binary)
 - [Validating with kicad-cli](#validating-with-kicad-cli)
@@ -43,7 +44,8 @@ captouch gui                          # live-preview desktop app
 ```
 
 Each command writes two files into the output directory (default `./examples`):
-`<name>.kicad_mod` (footprint) and `<name>.kicad_sym` (matching symbol).
+`<name>.kicad_mod` (footprint) and `<name>.kicad_sym` (matching symbol). Add
+`--dxf` for an extra `<name>.dxf` mechanical drawing (see [DXF export](#dxf-export)).
 
 ## The CLI
 
@@ -63,6 +65,7 @@ Run any with `--help` for the full parameter list.
 | `--strict` | Treat fab-rule violations as a hard error (refuse to generate). |
 | `--list-fab-profiles` | Print the fab profiles and their limits, and exit. |
 | `--save-params FILE` | Also write the resolved parameters as JSON (replay with `from-params`). |
+| `--dxf` | Also write `<name>.dxf`, a mechanical / CAD-handoff drawing of the same geometry. |
 
 `--version` prints the version; flags left unset fall back to the preset (or the
 built-in defaults).
@@ -424,9 +427,32 @@ captouch gui            # or: captouch-gui
   (Load switches to the matching widget); interchangeable with the CLI's
   `--save-params` / `from-params`.
 - **Export footprint + symbol…** writes the pair for the geometry on screen.
+- **Export DXF…** writes a `.dxf` mechanical drawing of the same geometry (see
+  [DXF export](#dxf-export)).
 
 `captouch gui --check` constructs the app and exits immediately — a headless smoke
 test (used to verify the packaged binary).
+
+## DXF export
+
+`--dxf` (CLI) and **Export DXF…** (GUI) write a `<name>.dxf` drawing of the same
+copper the footprint carries — for mechanical / CAD handoff (enclosure cut-outs,
+overlay artwork, documentation). It is an *additional* output; the `.kicad_mod` /
+`.kicad_sym` pair is unchanged.
+
+```sh
+captouch slider --name CT_Slider --dxf -o build/
+# wrote build/CT_Slider.kicad_mod
+# wrote build/CT_Slider.kicad_sym
+# wrote build/CT_Slider.dxf
+```
+
+The file is plain ASCII DXF (R12 — the most broadly readable flavour; opens in
+LibreCAD, FreeCAD, QCAD, Inkscape, AutoCAD…) in **millimetres**, with the geometry
+split onto familiar layers: `F.Cu` / `B.Cu` copper, `F.Fab` outline, `F.CrtYd`
+courtyard, and `Vias`. Coordinates are the same as the footprint but with **Y
+negated**, so the part reads upright in a conventional y-up CAD coordinate system
+(the same convention KiCad's own board → DXF export uses).
 
 ## Using the output in KiCad
 

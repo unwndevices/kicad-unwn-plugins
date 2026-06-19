@@ -48,7 +48,8 @@ The **PySide6 GUI** wraps the same engine: a slider/wheel/trackpad/mutual-slider
 (with vendor presets) that drives a live `QGraphicsView` preview (zoom/pan, layer toggles — including
 distinct `F.Cu`, `B.Cu`, and via layers for the trackpad) rendering the *same* geometry the exporters
 serialise — so the preview is byte-faithful to the exported copper — plus one-click export of the
-footprint + symbol.
+footprint + symbol (and an optional **`.dxf`** mechanical drawing, via `--dxf` or the GUI's
+**Export DXF…**, for CAD / enclosure handoff).
 
 A full **[usage guide](docs/usage.md)** covers install, the CLI, fab profiles, the GUI, importing into
 KiCad, and building the binary.
