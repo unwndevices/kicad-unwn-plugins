@@ -1,0 +1,7 @@
+# Dependencies KiCad installs into the plugin's managed virtualenv.
+#
+# kicad-python (kipy) is the stable IPC client used to reach the running KiCad and
+# find the open board's project. The generator itself ships as kicad-captouch; the
+# [gui] extra pulls in PySide6 for the live-preview design window.
+kicad-python>=0.5
+kicad-captouch[gui]>=0.1

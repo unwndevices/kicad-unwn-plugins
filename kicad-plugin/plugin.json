@@ -1,0 +1,22 @@
+{
+  "$schema": "https://go.kicad.org/api/schemas/v1",
+  "identifier": "org.kicad-captouch.generator",
+  "name": "Capacitive-Touch Footprint Generator",
+  "description": "Generate parametric capacitive-touch slider, wheel, trackpad, mutual-slider, and keypad footprints (plus matching symbols) and install them into the open board's project library, ready to place.",
+  "runtime": {
+    "type": "python",
+    "min_version": "3.10"
+  },
+  "actions": [
+    {
+      "identifier": "generate",
+      "name": "Capacitive-Touch Generator…",
+      "description": "Open the generator, design a touch widget, and add it to this project's library.",
+      "scopes": ["pcb"],
+      "entrypoint": "entry.py",
+      "show-button": true,
+      "icons-light": ["icon-light-24.png", "icon-light-48.png"],
+      "icons-dark": ["icon-dark-24.png", "icon-dark-48.png"]
+    }
+  ]
+}
