@@ -29,7 +29,8 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from ..export import dxf, footprint, symbol
+from .. import engine
+from ..export import dxf
 from ..geometry import KeypadGeometry, MutualSliderGeometry, TrackpadGeometry, WheelGeometry
 from ..geometry._base import GeometryError
 from ..params import (
@@ -340,12 +341,7 @@ class MainWindow(QMainWindow):
         name = self._geo.params.name
         fp_path = directory / f"{name}.kicad_mod"
         sym_path = directory / f"{name}.kicad_sym"
-        if isinstance(self._geo, TrackpadGeometry):
-            fp_text = footprint.trackpad_footprint_text(self._geo)
-            sym_text = symbol.trackpad_symbol_lib_text(self._geo)
-        else:
-            fp_text = footprint.widget_footprint_text(self._geo)
-            sym_text = symbol.widget_symbol_lib_text(self._geo)
+        fp_text, sym_text = engine.export_widget(self._geo)
         fp_path.write_text(fp_text, encoding="utf-8")
         sym_path.write_text(sym_text, encoding="utf-8")
         return fp_path, sym_path

@@ -16,7 +16,7 @@ from dataclasses import replace
 from pathlib import Path
 from typing import Any
 
-from . import __version__
+from . import __version__, engine
 from .export import dxf, footprint, symbol
 from .geometry import (
     build_keypad,
@@ -970,26 +970,8 @@ def _from_params(args: argparse.Namespace) -> int:
         return 2
 
     try:
-        if isinstance(params, WheelParams):
-            geo = build_wheel(params)
-            fp_text = footprint.wheel_footprint_text(geo)
-            sym_text = symbol.wheel_symbol_lib_text(geo)
-        elif isinstance(params, TrackpadParams):
-            geo = build_trackpad(params)
-            fp_text = footprint.trackpad_footprint_text(geo)
-            sym_text = symbol.trackpad_symbol_lib_text(geo)
-        elif isinstance(params, MutualSliderParams):
-            geo = build_mutual_slider(params)
-            fp_text = footprint.mutual_slider_footprint_text(geo)
-            sym_text = symbol.mutual_slider_symbol_lib_text(geo)
-        elif isinstance(params, KeypadParams):
-            geo = build_keypad(params)
-            fp_text = footprint.keypad_footprint_text(geo)
-            sym_text = symbol.keypad_symbol_lib_text(geo)
-        else:
-            geo = build_slider(params)
-            fp_text = footprint.slider_footprint_text(geo)
-            sym_text = symbol.slider_symbol_lib_text(geo)
+        geo = engine.build_widget(params)
+        fp_text, sym_text = engine.export_widget(geo)
     except SliderError as exc:
         print(f"error: {exc}")
         return 2
