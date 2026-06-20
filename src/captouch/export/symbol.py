@@ -187,6 +187,24 @@ def _serialize_symbol_lib(node: list) -> str:
     return sexpr.dumps(validate_symbol_lib(node)) + "\n"
 
 
+def merge_symbol_into_lib(new_symbol: list, existing: str | None) -> str:
+    """Splice *new_symbol* into an existing ``.kicad_sym`` library, returning text.
+
+    A project may collect several generated parts in one shared symbol library, so
+    the KiCad plugin appends to the library rather than overwriting it. *existing*
+    is the current library text (or ``None`` for a fresh library); any symbol that
+    already carries *new_symbol*'s name is replaced, the rest are kept in order, and
+    a fresh canonical header is emitted. A single-symbol library produced this way
+    (no *existing*) is byte-identical to :func:`widget_symbol_lib_text`.
+    """
+    name = new_symbol[1]
+    kept: list = []
+    if existing is not None and existing.strip():
+        lib = sexpr.loads(existing)
+        kept = [s for s in sexpr.find_all(lib, "symbol") if s[1] != name]
+    return _serialize_symbol_lib(_lib(*kept, new_symbol))
+
+
 # --------------------------------------------------------------------------- #
 # Phase 0 spike: a single one-pin symbol (kept for the format gate)
 # --------------------------------------------------------------------------- #
