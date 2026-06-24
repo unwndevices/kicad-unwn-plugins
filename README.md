@@ -1,259 +1,210 @@
 # kicad-captouch
 
-A standalone, vendor-agnostic desktop tool that **parametrically generates capacitive-touch
-interface footprints** — self- and mutual-cap sliders, wheels, XY diamond pads, and button keypads —
-for KiCad, with a live visual
-preview. Each widget is emitted as a ready-to-use **footprint (`.kicad_mod`)** plus a matching
-**schematic symbol (`.kicad_sym`)**, written directly as KiCad S-expressions (no dependency on
-KiCad's in-flux scripting API).
+A desktop tool that **parametrically generates capacitive-touch interface footprints** —
+self- and mutual-cap sliders, wheels, XY diamond trackpads, and button keypads — for KiCad,
+with a live visual preview. Each widget is emitted as a ready-to-use **footprint (`.kicad_mod`)**
+plus a matching **schematic symbol (`.kicad_sym`)**, written directly as KiCad S-expressions
+(no dependency on KiCad's in-flux scripting API), all **DRC-clean** in KiCad 9 and 10.
 
-License: **GPL-3.0-or-later**. See [`docs/plan.md`](docs/plan.md) for the architecture, stack, and
-roadmap, and the companion research in [`docs/`](docs).
+License: **GPL-3.0-or-later**.
 
-## Status — Phase 5 (polish & distribution)
+There are three ways to use it:
 
-Sliders, wheels, **and XY diamond trackpads** are done, with a desktop GUI, **vendor-pinned presets**,
-**fab-rule guards**, and a **standalone binary**. The engine — `params` → `geometry` (Shapely) →
-`export` — generates five widgets:
+| | What you get | Needs |
+|---|---|---|
+| **[KiCad plugin](#use-it-inside-kicad-plugin)** | Design inside KiCad and click *Add to KiCad project* to install the part into the open board's library, ready to place | KiCad 9/10 (10.0.1+ recommended) |
+| **[Standalone app](#run-it-standalone)** | The same live-preview GUI + a CLI, generating files you import yourself | Python, **or** a one-file binary |
+| **[From source](#build-from-source)** | Hack on it, run the tests, build the binary or the plugin package | A git checkout |
 
-- **Linear sliders** — a row of rectangular / chevron / interdigitated electrodes with grounded
-  end-dummy segments.
-- **Mutual-cap (CSX) sliders** — a 1-D diamond strip: one continuous `F.Cu` Rx sense line spanning
-  N `B.Cu`-bridged Tx drive electrodes (the [trackpad](#generate-a-trackpad) topology collapsed to a
-  single sense row), so N nodes need only `N + 1` pins (Microchip AN2934 §2.4).
-- **Wheels (rotary sliders)** — the slider construction bent into a continuous annulus around a
-  centre keep-out hole; the mean radius is derived from the pitch
-  (`circumference = num_segments × (W + gap)`), arcs are tessellated to polylines (KiCad custom-pad
-  polygons can't hold arcs), and there are no end dummies.
-- **XY diamond trackpads** — a **mutual-capacitance** `R×C` diamond matrix on **two copper layers**:
-  Rx rows run continuous on `F.Cu` while Tx columns are **bridged on `B.Cu` through thru-hole vias**
-  at every crossing, with **half-diamond edge termination**. `R + C` pins resolve `R·C` interpolated
-  nodes. The diamond half-diagonal is derived from the pitch and gap so every facing edge keeps the
-  nominal clearance.
-- **Button keypads** — an `R×C` grid of **discrete self-cap buttons** (rect / circle / diamond),
-  each its own electrode on its own pin (`R·C` pads / `K1…KN` pins), single-layer. The default
-  4 mm button separation follows the Microchip self-cap rule; an overlay flags under-sized or
-  under-spaced buttons via the advisory channel.
+For the full parameter reference — every widget, flag, fab profile, and advisory — see the
+**[usage guide](docs/usage.md)**. For architecture and roadmap see [`docs/plan.md`](docs/plan.md).
 
-Most widgets can be **designed from their overall size** instead of an element count — a target slider
-length, wheel outer diameter, or trackpad panel width×height — and the generator derives the count
-from the pitch (trimming or insetting the trackpad lattice to the exact outline).
+## What it generates
 
-Sliders and wheels enforce the Infineon `W + 2A = finger_diameter` constraint; every widget emits a
-footprint plus a matching symbol whose pins map 1:1 to the pads, in the **KiCad 9.0** format
-(footprint `version 20241229`, symbol lib `version 20241209`) that both KiCad 9 and 10 accept — all
-**DRC-clean** in KiCad 10 (the trackpad's via bridges verified connected via DRC, not just assumed).
+Five widgets, all derived from one engine (`params` → `geometry` (Shapely) → `export`):
 
-The **PySide6 GUI** wraps the same engine: a slider/wheel/trackpad/mutual-slider/keypad selector swaps a parameter panel
-(with vendor presets) that drives a live `QGraphicsView` preview (zoom/pan, layer toggles — including
-distinct `F.Cu`, `B.Cu`, and via layers for the trackpad) rendering the *same* geometry the exporters
-serialise — so the preview is byte-faithful to the exported copper — plus one-click export of the
-footprint + symbol (and an optional **`.dxf`** mechanical drawing, via `--dxf` or the GUI's
-**Export DXF…**, for CAD / enclosure handoff).
+- **Linear sliders** — a row of rectangular / chevron / interdigitated self-cap electrodes.
+- **Wheels** — the slider bent into a continuous annulus around a centre keep-out.
+- **XY diamond trackpads** — a mutual-cap `R×C` diamond matrix on two copper layers (`F.Cu` rows,
+  `B.Cu`-bridged columns through vias); `R + C` pins resolve `R·C` interpolated nodes.
+- **Mutual-cap (CSX) sliders** — the trackpad collapsed to one sense row: N nodes on `N + 1` pins.
+- **Button keypads** — an `R×C` grid of discrete self-cap buttons (rect / circle / diamond),
+  one pin each.
 
-A full **[usage guide](docs/usage.md)** covers install, the CLI, fab profiles, the GUI, importing into
-KiCad, and building the binary.
+Most widgets can be designed **from their overall size** (a target length, diameter, or panel
+W×H) instead of an element count. Every part ships in the **KiCad 9.0** S-expression format that
+both KiCad 9 and 10 accept. See [usage.md](docs/usage.md) for parameters, vendor presets, fab-rule
+guards, sensitivity advisories, optional ground/guard copper, and DXF export.
 
-Install (Shapely is the only runtime dependency; the GUI adds PySide6):
+---
 
-```sh
-pip install -e .          # engine + CLI (or: pip install shapely)
-pip install -e '.[gui]'   # add the PySide6 desktop GUI
-```
+## Use it inside KiCad (plugin)
 
-Non-Python users can build a single self-contained executable instead — see
-[Standalone binary](#standalone-binary).
+Run the generator **from inside KiCad 9/10** as an IPC Action Plugin. It opens the same
+live-preview window, and an **Add to KiCad project** button writes the designed widget's
+footprint + symbol into the open project's `captouch` library and registers it — ready to place
+from KiCad's own *Add Footprint* / *Add Symbol* pickers. The placed part is byte-identical to the
+standalone CLI/GUI output; the [IPC API](https://docs.kicad.org/kicad-python-main/)
+(`kicad-python`) is used only to find which project is open.
 
-### Launch the GUI
+### Install
 
-```sh
-captouch gui              # or: captouch-gui
-```
+The easiest path is KiCad's **Plugin and Content Manager (PCM)** — every tagged release publishes a
+ready-made package, so you never hunt for the right plugins folder by hand.
 
-### Generate a slider
+- **Add the repository (recommended — auto-updates).** In the PCM open **Manage…**, add the
+  repository URL
 
-```sh
-# defaults: 4-segment chevron slider, W derived from an 8 mm finger
-captouch slider --out examples --name CT_Slider
+  ```
+  https://unwndevices.github.io/kicad-captouch/repository.json
+  ```
 
-# from a vendor preset, overriding a couple of parameters
-captouch slider --preset infineon --shape interdigitated --num-segments 6
+  then install *Capacitive-Touch Footprint Generator* from the list. KiCad offers updates when new
+  releases ship.
 
-# or size from the overall length instead of a segment count
-captouch slider --length 100
+- **Install from File.** Download `kicad-captouch-pcm-<version>.zip` from the
+  [Releases page](https://github.com/unwndevices/kicad-captouch/releases), then in the PCM choose
+  **Install from File…** and pick that zip.
 
-captouch slider --list-presets        # infineon / microchip / azoteq
-captouch slider --help                # full parameter list
-```
+- **Manual copy.** Copy the [`kicad-plugin/`](kicad-plugin/) directory into KiCad's IPC plugins
+  folder (`~/.local/share/kicad/<ver>/plugins/` on Linux, `~/Documents/KiCad/<ver>/plugins/` on
+  macOS, `Documents\KiCad\<ver>\plugins\` on Windows).
 
-Key parameters: `--shape {rectangular,chevron,interdigitated}`, `--num-segments`,
-`--segment-width`/`--segment-height`, `--air-gap`, `--finger-diameter`, `--num-fingers`,
-`--tooth-depth`, `--end-dummies`, `--corner-radius`, `--tip-radius`. Segment width is derived from
-the finger diameter unless given; `--relax-finger-constraint` waives the `W + 2A` check. Pass
-`--length` to size the strip by its overall length (the segment count is derived from the pitch).
+### Enable it and first run
 
-Chevron tooth-tips are acute and would otherwise etch to fab-resolution copper points, so they are
-rounded for ESD relief by `--tip-radius` (default 0.15 mm, chevron-only); `--corner-radius` adds
-extra rounding to every shape. Set `--tip-radius 0` to keep sharp tips.
+In every case:
 
-### Generate a mutual slider
+1. **Enable the IPC API** — *Preferences → Plugins → "Enable KiCad API"*. The plugin will **not**
+   appear if this is off.
+2. **Restart KiCad.** On first run KiCad builds a managed virtualenv and installs the plugin's
+   [`requirements.txt`](kicad-plugin/requirements.txt) (`kicad-python` + `kicad-captouch[gui]`,
+   pulled as a zip straight from this repo). This takes a minute; the toolbar button appears once
+   it finishes.
 
-```sh
-# defaults: 5-node single-sense-line mutual-cap diamond slider
-captouch mutual-slider --out examples --name CT_MutualSlider
+The action then shows up as **Tools → External Plugins → Capacitive-Touch Generator** and on the
+PCB-editor toolbar.
 
-# from a vendor preset, overriding the node count
-captouch mutual-slider --preset microchip --num-segments 6
+> **No button, nothing under External Plugins?** That almost always means the first-run venv build
+> failed. Update to **KiCad 10.0.1+** (10.0.0 had a bug where IPC plugins didn't appear, and 10.0.1
+> surfaces plugin errors in the status bar), then see the
+> [plugin troubleshooting guide](kicad-plugin/README.md#troubleshooting) for how to read the pip log
+> and reset the venv.
 
-# or size from the target overall length instead of a node count
-captouch mutual-slider --length 80
+### Use it
 
-captouch mutual-slider --list-presets   # microchip / dual / compact
-captouch mutual-slider --help           # full parameter list
-```
+1. Open your board, then **Tools → External Plugins → Capacitive-Touch Generator** (or the toolbar
+   button).
+2. Design a slider / wheel / trackpad / mutual-slider / keypad with the live preview.
+3. **Add to KiCad project** → confirm the destination (defaults to a project-local `captouch`
+   library; footprint and symbol can target different or global libraries).
+4. In the PCB editor press <kbd>A</kbd> and pick `captouch:<name>` to place the footprint; add the
+   matching symbol from the `captouch` symbol library in the schematic.
 
-A **mutual-capacitance (CSX)** slider reads position from the mutual coupling at each drive×sense
-crossing. It is the trackpad's diamond/bridge construction collapsed to one sense row, so it reuses
-that engine and likewise needs **two copper layers**. Parameters: `--num-segments` (Tx drive
-electrodes = position nodes, ≥ 3); `--sense-rows {1,2}` (1 = a single `Rx` sense line, 2 = a dual-row
-layout for a stronger mutual signal — Infineon "Dual Solid Diamond"); `--diamond-pitch`,
-`--diamond-gap`, `--bridge-width`, `--via-drill` / `--via-diameter` (as for the trackpad). Pass
-`--length` to size the strip by its overall length (node count derived from the pitch). The symbol's
-pins are `Rx1` (sense) and `Tx1…TxN` (drive), and it records the **2 kΩ** mutual-cap series-R note.
+Full details and the rationale for the library-install approach are in
+[`kicad-plugin/README.md`](kicad-plugin/README.md) and
+[usage.md](docs/usage.md#kicad-plugin-design-from-inside-kicad).
 
-### Generate a wheel
+---
+
+## Run it standalone
+
+### From a Python install
+
+Shapely is the only runtime dependency; the GUI adds PySide6.
 
 ```sh
-# defaults: 5-segment chevron wheel, radius derived from the pitch
-captouch wheel --out examples --name CT_Wheel
-
-# from a vendor preset, overriding the segment count
-captouch wheel --preset st_rotary --num-segments 6
-
-# or size from the target outer diameter instead of a segment count
-captouch wheel --outer-diameter 50
-
-captouch wheel --list-presets         # st_rotary / microchip / infineon
-captouch wheel --help                 # full parameter list
+pip install -e .            # engine + CLI
+pip install -e '.[gui]'     # add the PySide6 desktop GUI
 ```
 
-Wheel-specific parameters: `--ring-width` (radial width), `--arc-resolution` (circle tessellation,
-segments per 90°); it also takes `--corner-radius` / `--tip-radius` like the slider. The outer
-diameter and centre-hole diameter are **derived** from the pitch and ring width and printed on
-generation. Wheels are continuous, so there are no end dummies. Pass `--outer-diameter` to size the
-ring by its overall diameter (the segment count is derived from the pitch).
-
-### Generate a trackpad
+**Launch the GUI:**
 
 ```sh
-# defaults: 4x5 mutual-cap diamond matrix, 5 mm pitch
-captouch trackpad --out examples --name CT_Trackpad
-
-# from a vendor preset, overriding the matrix size
-captouch trackpad --preset infineon --num-rows 6 --num-cols 6
-
-# or size from the overall pad — counts derived, lattice trimmed/inset to the exact outline
-captouch trackpad --panel-width 300 --panel-height 200
-
-captouch trackpad --list-presets      # infineon / microchip / compact
-captouch trackpad --help              # full parameter list
+captouch gui                # or: captouch-gui
 ```
 
-Trackpad parameters: `--num-rows` (Rx sense lines) `×` `--num-cols` (Tx drive lines), each ≥ 2 with
-no upper cap (large pads are allowed; 3–16 / ≤100 nodes is AT11849's *recommendation* for a touch
-surface, not a hard limit); `--diamond-pitch` (row/column centre spacing) and `--diamond-gap`
-(copper-to-copper gap); `--bridge-width` (the F.Cu neck / B.Cu strap width) and `--via-drill` /
-`--via-diameter` for the cross-layer bridge vias. The Tx columns are bridged on `B.Cu` so the design
-needs **two copper layers**. Note the connecting necks pinch tighter than the bulk diamond gap
-(~`gap/√2`), as in any diamond pattern — that pinch is what the DRC gate checks. To design from a
-known overall size, give `--panel-width`/`--panel-height` instead of the counts: the row/column
-counts are derived from the pitch and the lattice is trimmed (overflow) or inset (underflow) to the
-exact outline.
-
-### Generate a keypad
+**Or use the CLI** — each command writes `<name>.kicad_mod` + `<name>.kicad_sym` (default into
+`./examples`):
 
 ```sh
-# defaults: 3x4 grid of 10 mm square buttons, 4 mm apart
-captouch keypad --out examples --name CT_Keypad
-
-# from a vendor preset, overriding the grid size
-captouch keypad --preset numeric --num-rows 4 --num-cols 4
-
-# round or diamond buttons
-captouch keypad --num-rows 2 --num-cols 4 --button-shape diamond --button-size 9
-
-captouch keypad --list-presets        # numeric / round / compact
-captouch keypad --help                # full parameter list
+captouch slider                                  # 4-segment chevron slider
+captouch wheel --preset st_rotary                # rotary wheel from a vendor preset
+captouch trackpad --num-rows 4 --num-cols 5      # 4×5 mutual-cap diamond pad
+captouch mutual-slider --num-segments 6          # 6-node mutual-cap (CSX) slider
+captouch keypad --num-rows 4 --num-cols 3        # 4×3 self-cap button grid
+captouch slider --length 100                     # size from overall length, not a count
+captouch <widget> --help                         # full parameter list for any widget
 ```
 
-A **keypad** is an `R×C` array of **discrete self-cap buttons** — each button its own electrode on
-its own pin (no interpolation, no shared rows/columns; that is the trackpad's job), so the footprint
-is one custom pad per button and the symbol one `K1…KN` pin per button (numbered row-major). It is
-single-layer and needs no vias. Keypad parameters: `--num-rows` / `--num-cols`, `--button-shape`
-`{rect,circle,diamond}`, `--button-size` (square side / circle diameter / diamond diagonal), `--gap`
-(button-to-button separation, default 4 mm — the Microchip self-cap rule), and `--corner-radius`
-(ESD rounding). With `--overlay-thickness` set, the advisory channel flags a button below `3×overlay`
-or a gap below `4 mm + overlay`. The symbol records the **560 Ω** self-cap series-R note.
+Then import the pair in KiCad (*Manage Footprint/Symbol Libraries*) — see
+[usage.md → Using the output in KiCad](docs/usage.md#using-the-output-in-kicad).
 
-### Fab-rule guards
+### Standalone binary (no Python)
 
-After building the geometry, every generator checks the tightest copper width, clearance, drill, and
-annular ring it will produce against a **fab profile** (`--fab-profile {default,jlcpcb,oshpark}`,
-default `default`; `--list-fab-profiles` prints them). A violation is a non-blocking **warning** by
-default — the files are still written; `--strict` promotes it to a hard error (exit 3, nothing
-written) for CI. The GUI shows the same check live, in an amber banner under the preview. The bundled
-profiles are representative of common 2-layer capabilities — confirm against your own board house.
+Each release ships a one-file executable on the
+[Releases page](https://github.com/unwndevices/kicad-captouch/releases) —
+`captouch-linux-x86_64`, `captouch-macos`, `captouch-windows.exe`. Download it, make it executable,
+and run it exactly like the CLI; `captouch gui` launches the preview app.
 
 ```sh
-captouch trackpad --fab-profile oshpark            # warns: via annular ring below the floor
-captouch trackpad --fab-profile oshpark --strict   # refuses to generate (exit 3)
+chmod +x captouch-linux-x86_64
+./captouch-linux-x86_64 gui
 ```
 
-### Design advisories
+---
 
-A second, *electrical* advisory layer (guidelines §§5.5/5.7/5.10) — sensitivity, not
-manufacturability — runs alongside the fab guards and changes no geometry. It recommends a
-**series resistor** (560 Ω self / 2 kΩ mutual, placed at the MCU; also embedded as a hidden
-`Series_R` symbol property), checks **electrode-vs-overlay sizing** and a parallel-plate **Cp budget**
-(`--overlay-thickness` / `--overlay-er` / `--board-thickness`), and shares the warn/`--strict` channel
-(the actionable sizing/Cp items can block; the recommendations never do). The GUI surfaces them in the
-amber banner plus a quieter info line.
+## Build from source
+
+Clone the repo, then pick the artifact you want to build.
+
+### Dev install + tests
 
 ```sh
-captouch slider --segment-height 8 --overlay-thickness 2   # warns: finger overhangs the electrode
+pip install -e '.[dev]'                  # engine, GUI, and test/lint toolchain
+PYTHONPATH=src python3 -m pytest         # unit + golden-file + kicad-cli gates
 ```
 
-### Use inside KiCad (Action Plugin)
-
-Run the generator **from inside KiCad 9/10** as an IPC Action Plugin: drop the
-[`kicad-plugin/`](kicad-plugin/) bundle into KiCad's plugins folder, and the live-preview
-window gains an **Add to KiCad project** button that writes the designed widget's
-byte-identical footprint + symbol into the open project's `captouch` library and registers it —
-ready to place from KiCad's own *Add Footprint* / *Add Symbol* pickers (footprint and symbol can
-target different or global/personal libraries). The plugin uses the stable IPC API
-(`kicad-python`) only to find the open project; generation stays in the standalone engine. See
-[`kicad-plugin/README.md`](kicad-plugin/README.md) and [`docs/usage.md`](docs/usage.md#kicad-plugin-design-from-inside-kicad).
+The `kicad-cli` tests (footprint/symbol render, and **DRC-clean** on a generated board) run
+automatically when `kicad-cli` is on `PATH`, and skip otherwise. The GUI tests run headless on Qt's
+`offscreen` platform and skip when PySide6 is absent.
 
 ### Standalone binary
 
-For users without Python, PyInstaller freezes the CLI + GUI into one file:
+PyInstaller freezes the CLI + GUI into one file. It can't cross-compile, so each OS builds its own:
 
 ```sh
 pip install -e '.[packaging]'
-packaging/build-binary.sh        # Linux / macOS → dist/captouch (captouch gui launches the app)
+packaging/build-binary.sh                # Linux / macOS → dist/captouch (also smoke-tested)
 ```
 
-PyInstaller can't cross-compile, so each OS builds its own binary; the
-[`build-binaries` CI workflow](.github/workflows/build.yml) builds and smoke-tests on
+The [`build-binaries` CI workflow](.github/workflows/build.yml) builds and smoke-tests on
 Linux/macOS/Windows and uploads the artifacts.
 
-### Tests
+### KiCad PCM package
+
+`packaging/build_pcm.py` turns the [`kicad-plugin/`](kicad-plugin/) bundle into an installable PCM
+package plus the repository index (`packages.json` / `repository.json` / `resources.zip`). It
+pins the plugin's `requirements.txt` to the released tag and validates every emitted JSON against
+the vendored PCM v2 schema, building a deterministic (byte-stable) zip:
 
 ```sh
-PYTHONPATH=src python3 -m pytest        # unit + golden-file + kicad-cli gates
+pip install jsonschema
+python packaging/build_pcm.py --version 0.1.0 --outdir dist
 ```
 
-The `kicad-cli` tests (footprint/symbol render, and **DRC-clean** on a generated test board) run
-automatically when `kicad-cli` is on `PATH`, and are skipped otherwise. The GUI tests run headless
-on Qt's `offscreen` platform (no display needed) and are skipped when PySide6 is absent. The Phase-0
-format spike is still emitted by `captouch spike`.
+On a `v*` tag the [`release` workflow](.github/workflows/release.yml) runs this, publishes the PCM
+package and the binaries as Release assets, and deploys the repository index to GitHub Pages so the
+[repository URL](#install) resolves and offers updates.
+
+---
+
+## Docs
+
+- **[docs/usage.md](docs/usage.md)** — full usage guide: every widget and flag, vendor presets,
+  fab-rule guards, sensitivity advisories, support copper, DXF export, and validating with
+  `kicad-cli`.
+- **[docs/plan.md](docs/plan.md)** — architecture, stack, and roadmap.
+- **[docs/capacitive-touch-design-guidelines.md](docs/capacitive-touch-design-guidelines.md)** —
+  the design numbers behind the parameters.
+- **[kicad-plugin/README.md](kicad-plugin/README.md)** — the plugin bundle, install options, and
+  troubleshooting.
