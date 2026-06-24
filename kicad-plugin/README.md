@@ -22,18 +22,36 @@ emitter authoritative and the output identical to every other frontend.
 
 ## Install
 
-Copy this `kicad-plugin/` directory into KiCad's IPC plugins folder, renaming it as
-you like:
+Two things are needed in every case: **enable the IPC API** in *Preferences →
+Plugins* (tick *"Enable KiCad API"*) — the plugin will not appear if this is off —
+and **restart KiCad**. On first run KiCad builds a managed virtualenv and installs
+[`requirements.txt`](./requirements.txt) into it (this takes a minute; the toolbar
+button appears once it finishes). The action then shows up as **Tools → External
+Plugins → Capacitive-Touch Generator** and on the PCB-editor toolbar.
+
+### Recommended: Plugin & Content Manager
+
+Each tagged release publishes a ready-made PCM package, so you never have to find
+the right plugins folder by hand:
+
+- **Install from File** — download `kicad-captouch-pcm-<version>.zip` from the
+  project's [Releases page](https://github.com/unwndevices/kicad-captouch/releases),
+  then in KiCad's **Plugin and Content Manager** choose **Install from File…** and
+  pick that zip.
+- **Add the repository (auto-updates)** — in the Plugin and Content Manager open
+  **Manage…**, add the repository URL
+  `https://unwndevices.github.io/kicad-captouch/repository.json`, then install
+  *Capacitive-Touch Footprint Generator* from the list. KiCad will offer updates
+  when new releases ship.
+
+### Manual: copy the bundle
+
+Alternatively, copy this `kicad-plugin/` directory into KiCad's IPC plugins folder,
+renaming it as you like:
 
 - **Linux:** `~/.local/share/kicad/<version>/plugins/` *(or `${KICAD_DOCUMENTS_HOME}/<version>/plugins`)*
 - **macOS:** `~/Documents/KiCad/<version>/plugins/`
 - **Windows:** `Documents\KiCad\<version>\plugins\`
-
-Then enable the IPC API in **Preferences → Plugins** (*"Enable KiCad API"*) and
-restart KiCad. On first run KiCad creates a virtualenv and installs
-[`requirements.txt`](./requirements.txt) (this can take a minute — the toolbar
-button appears once it finishes). The action shows up as **Tools → External Plugins
-→ Capacitive-Touch Generator** and on the PCB-editor toolbar.
 
 > Prefer not to pull from GitHub at build time? Run from a source checkout: the
 > [`entry.py`](./entry.py) shim adds the repo's `src/` to `sys.path` if

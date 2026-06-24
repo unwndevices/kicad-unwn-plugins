@@ -488,12 +488,18 @@ writes the chosen widget's footprint + symbol straight into the open project's
 library and registers it — ready to place with KiCad's own *Add Footprint* /
 *Add Symbol* pickers.
 
-**Install.** Copy the [`kicad-plugin/`](../kicad-plugin/) directory into KiCad's
-IPC plugins folder (Linux `~/.local/share/kicad/<version>/plugins/`, macOS/Windows
-`Documents/KiCad/<version>/plugins/`), enable the API in *Preferences → Plugins*,
-and restart. KiCad builds a virtualenv and installs the plugin's
-`requirements.txt` on first run; the toolbar button appears once that finishes. See
-[`kicad-plugin/README.md`](../kicad-plugin/README.md) for details.
+**Install.** Easiest is KiCad's **Plugin and Content Manager**: every release
+publishes a PCM package, so either grab `kicad-captouch-pcm-<version>.zip` from the
+[Releases page](https://github.com/unwndevices/kicad-captouch/releases) and use
+*Install from File…*, or add the repository URL
+`https://unwndevices.github.io/kicad-captouch/repository.json` for one-click install
+and automatic updates. (You can still copy the [`kicad-plugin/`](../kicad-plugin/)
+directory into KiCad's IPC plugins folder by hand instead.) Either way, enable the
+API in *Preferences → Plugins* (*"Enable KiCad API"* — the plugin won't appear if
+it's off) and restart; on first run KiCad builds a virtualenv from the plugin's
+`requirements.txt` and the toolbar button appears once that finishes. See
+[`kicad-plugin/README.md`](../kicad-plugin/README.md) for details and
+troubleshooting.
 
 **Use.**
 
