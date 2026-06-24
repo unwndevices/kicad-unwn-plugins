@@ -3,5 +3,10 @@
 # kicad-python (kipy) is the stable IPC client used to reach the running KiCad and
 # find the open board's project. The generator itself ships as kicad-captouch; the
 # [gui] extra pulls in PySide6 for the live-preview design window.
+#
+# kicad-captouch is not on PyPI yet, so it is installed straight from the GitHub
+# repository as a plain zip (no git client required). If KiCad ever fails to build
+# the plugin venv, this line is the first thing to check. Pin the URL to a release
+# tag or commit SHA once one exists, for reproducible plugin-venv builds.
 kicad-python>=0.5
-kicad-captouch[gui]>=0.1
+kicad-captouch[gui] @ https://github.com/unwndevices/kicad-captouch/archive/refs/heads/main.zip

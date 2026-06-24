@@ -35,10 +35,33 @@ restart KiCad. On first run KiCad creates a virtualenv and installs
 button appears once it finishes). The action shows up as **Tools → External Plugins
 → Capacitive-Touch Generator** and on the PCB-editor toolbar.
 
-> Prefer not to install the package from PyPI? Run from a source checkout: the
+> Prefer not to pull from GitHub at build time? Run from a source checkout: the
 > [`entry.py`](./entry.py) shim adds the repo's `src/` to `sys.path` if
 > `kicad-captouch` isn't installed, so the plugin runs straight from the tree
-> (you still need `kicad-python` and `PySide6` available).
+> (you still need `kicad-python` and `PySide6` available in the venv).
+
+## Troubleshooting
+
+**No toolbar button, and nothing under Tools → External Plugins.** This almost
+always means KiCad's first-run venv build failed — most often because a dependency
+in [`requirements.txt`](./requirements.txt) could not be installed. KiCad reports
+this poorly by default, so make it talk:
+
+- **Update to KiCad 10.0.1 or later.** 10.0.0 had a bug where IPC plugins did not
+  appear in the toolbar; 10.0.1 also surfaces plugin `stdout`/`stderr` in the
+  status-bar warnings (bottom-right).
+- **See the build error.** Launch KiCad from a terminal with tracing on:
+  - Windows: `set KICAD_ALLOC_CONSOLE=1 & set KICAD_ENABLE_WXTRACE=1 & set WXTRACE=KICAD_API & "C:\Program Files\KiCad\10.0\bin\kicad.exe"`
+  - Linux / macOS: `KICAD_ENABLE_WXTRACE=1 WXTRACE=KICAD_API kicad`
+- **Inspect or reset the venv.** The plugin's managed environment lives at
+  `<KiCad cache>/python-environments/org.kicad-captouch.generator` — Windows
+  `%LOCALAPPDATA%\KiCad\<version>\python-environments\…`, Linux
+  `~/.cache/KiCad/<version>/…`, macOS `~/Library/Caches/KiCad/<version>/…`. Its pip
+  log shows what failed. **Delete this folder and restart KiCad** to force a clean
+  rebuild after editing `requirements.txt`.
+
+See the [KiCad add-on developer docs](https://dev-docs.kicad.org/en/apis-and-binding/ipc-api/for-addon-developers/index.html)
+for the full debugging reference.
 
 ## Files
 
