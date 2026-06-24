@@ -16,7 +16,7 @@ dependencies = ["shapely>=2.0"]
 
 [project.optional-dependencies]
 gui = ["PySide6>=6.6"]
-dev = ["pytest>=7", "pytest-cov>=4", "ruff>=0.6", "mypy>=1.8", "PySide6>=6.6"]
+dev = ["pytest>=7", "pytest-cov>=4", "ruff>=0.6", "mypy>=1.8", "PySide6>=6.6", "jsonschema>=4"]
 # Standalone-binary build toolchain (PyInstaller bundles the GUI, so pull it in).
 packaging = ["kicad-captouch[gui]", "pyinstaller>=6"]
 
