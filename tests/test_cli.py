@@ -112,6 +112,33 @@ def test_wheel_spiral_shape_writes_both_files(tmp_path, capsys):
     assert (tmp_path / "SW.kicad_sym").exists()
 
 
+def _sliver_spiral_args(out):
+    # A 70° twist on a narrow 2 mm ring pinches the outer corner well below the
+    # 20° floor (~13°), so the spiral-sliver advisory blocks.
+    return [
+        "wheel", "--out", str(out), "--name", "SW",
+        "--shape", "spiral", "--spiral-angle", "70", "--ring-width", "2",
+    ]
+
+
+def test_sliver_spiral_warns_but_still_generates(tmp_path, capsys):
+    rc = main(_sliver_spiral_args(tmp_path))
+    out = capsys.readouterr().out
+    assert rc == 0  # advisory, not a block without --strict
+    assert "advisory:" in out and "spiral_angle" in out
+    assert (tmp_path / "SW.kicad_mod").exists()
+    assert (tmp_path / "SW.kicad_sym").exists()
+
+
+def test_sliver_spiral_blocks_under_strict(tmp_path, capsys):
+    rc = main(_sliver_spiral_args(tmp_path) + ["--strict"])
+    out = capsys.readouterr().out
+    assert rc == 3
+    assert "error:" in out and "refusing to generate" in out
+    assert not (tmp_path / "SW.kicad_mod").exists()
+    assert not (tmp_path / "SW.kicad_sym").exists()
+
+
 def test_save_params_and_from_params_round_trip(tmp_path):
     out, regen, pj = tmp_path / "a", tmp_path / "b", tmp_path / "p.json"
     rc = main(
