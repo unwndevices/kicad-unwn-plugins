@@ -38,6 +38,7 @@ from .params import (
     SLIDER_PRESETS,
     TRACKPAD_PRESETS,
     WHEEL_PRESETS,
+    WHEEL_SEGMENT_SHAPES,
     KeypadParams,
     MutualSliderError,
     MutualSliderParams,
@@ -542,6 +543,7 @@ def _wheel_params_from_args(args: argparse.Namespace) -> WheelParams:
         ("finger_diameter", "finger_diameter"),
         ("num_fingers", "num_fingers"),
         ("tooth_depth", "tooth_depth"),
+        ("spiral_angle", "spiral_angle"),
         ("corner_radius", "corner_radius"),
         ("tip_radius", "tip_radius"),
         ("arc_resolution", "arc_resolution"),
@@ -626,8 +628,8 @@ def _add_wheel_parser(sub: argparse._SubParsersAction) -> None:
     p.add_argument(
         "--shape",
         dest="shape",
-        choices=("rectangular", "chevron", "interdigitated"),
-        help="electrode boundary style",
+        choices=WHEEL_SEGMENT_SHAPES,
+        help="electrode boundary style (spiral = iPod-style swirl, wheel only)",
     )
     p.add_argument("--num-segments", type=int, help="electrode count around the ring (>=3)")
     p.add_argument(
@@ -644,6 +646,11 @@ def _add_wheel_parser(sub: argparse._SubParsersAction) -> None:
     p.add_argument("--finger-diameter", type=float, help="finger contact diameter (mm)")
     p.add_argument("--num-fingers", type=int, help="teeth per boundary (chevron/interdigitated)")
     p.add_argument("--tooth-depth", type=float, help="boundary half-amplitude (mm)")
+    p.add_argument(
+        "--spiral-angle",
+        type=float,
+        help="spiral boundary twist inner->outer (deg; spiral shape only)",
+    )
     p.add_argument("--corner-radius", type=float, help="extra ESD convex-corner rounding (mm)")
     p.add_argument("--tip-radius", type=float, help="chevron tooth-tip rounding (mm)")
     p.add_argument("--arc-resolution", type=int, help="circle tessellation: segments per 90deg")
