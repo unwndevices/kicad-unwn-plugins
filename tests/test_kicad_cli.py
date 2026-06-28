@@ -35,6 +35,7 @@ KICAD_CLI = shutil.which("kicad-cli")
 pytestmark = pytest.mark.skipif(KICAD_CLI is None, reason="kicad-cli not installed")
 
 SHAPES = ["rectangular", "chevron", "interdigitated"]
+WHEEL_SHAPES = [*SHAPES, "spiral"]
 
 
 def _wheel(shape):
@@ -123,7 +124,7 @@ def test_drc_catches_undersized_gap(tmp_path):
 # --------------------------------------------------------------------------- #
 # wheel
 # --------------------------------------------------------------------------- #
-@pytest.mark.parametrize("shape", SHAPES)
+@pytest.mark.parametrize("shape", WHEEL_SHAPES)
 def test_wheel_footprint_renders(shape, tmp_path):
     geo = _wheel(shape)
     pretty = tmp_path / "lib.pretty"
@@ -139,7 +140,7 @@ def test_wheel_footprint_renders(shape, tmp_path):
     assert (svg_dir / "CT_Wheel.svg").exists()
 
 
-@pytest.mark.parametrize("shape", SHAPES)
+@pytest.mark.parametrize("shape", WHEEL_SHAPES)
 def test_wheel_drc_clean(shape, tmp_path):
     geo = _wheel(shape)
     board = tmp_path / "board.kicad_pcb"

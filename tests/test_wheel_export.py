@@ -12,7 +12,7 @@ from captouch.geometry import build_wheel
 from captouch.params import WheelParams
 
 GOLDEN = Path(__file__).parent / "golden"
-SHAPES = ["rectangular", "chevron", "interdigitated"]
+SHAPES = ["rectangular", "chevron", "interdigitated", "spiral"]
 
 
 def _params(shape, **kw):
@@ -122,4 +122,30 @@ def test_rectangular_golden_symbol():
     )
     text = symbol.wheel_symbol_lib_text(geo)
     golden = (GOLDEN / "CT_Wheel_Rect.kicad_sym").read_text()
+    assert text == golden
+
+
+def _spiral_golden_params():
+    return WheelParams(
+        name="CT_Wheel_Spiral",
+        segment_shape="spiral",
+        num_segments=5,
+        ring_width=5.0,
+        air_gap=0.5,
+        finger_diameter=8.0,
+        spiral_angle=45.0,
+    )
+
+
+def test_spiral_golden_footprint():
+    geo = build_wheel(_spiral_golden_params())
+    text = footprint.wheel_footprint_text(geo)
+    golden = (GOLDEN / "CT_Wheel_Spiral.kicad_mod").read_text()
+    assert text == golden
+
+
+def test_spiral_golden_symbol():
+    geo = build_wheel(_spiral_golden_params())
+    text = symbol.wheel_symbol_lib_text(geo)
+    golden = (GOLDEN / "CT_Wheel_Spiral.kicad_sym").read_text()
     assert text == golden
