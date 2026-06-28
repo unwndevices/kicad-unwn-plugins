@@ -273,6 +273,31 @@ def test_wheel_panel_diameter_driven_derives_count(qapp):
     assert not panel.diameter_driven.isChecked()
 
 
+def test_wheel_panel_spiral_shape_gates_teeth_and_twist(qapp):
+    from captouch.gui.wheel_panel import WheelPanel
+
+    panel = WheelPanel()
+    panel.shape.setCurrentText("chevron")
+    assert panel.num_fingers.isEnabled() and not panel.spiral_angle.isEnabled()
+    panel.shape.setCurrentText("rectangular")
+    assert not panel.num_fingers.isEnabled() and not panel.spiral_angle.isEnabled()
+    panel.shape.setCurrentText("spiral")  # toothless, but the twist is live
+    assert not panel.num_fingers.isEnabled()
+    assert not panel.tooth_depth_auto.isEnabled()
+    assert panel.spiral_angle.isEnabled()
+
+
+def test_wheel_panel_spiral_angle_round_trips(qapp):
+    from captouch.gui.wheel_panel import WheelPanel
+    from captouch.params import WheelParams
+
+    panel = WheelPanel()
+    panel.set_params(WheelParams(segment_shape="spiral", spiral_angle=60.0))
+    got = panel.params()
+    assert got.segment_shape == "spiral"
+    assert got.spiral_angle == pytest.approx(60.0)
+
+
 # --------------------------------------------------------------------------- #
 # widget switcher — trackpad
 # --------------------------------------------------------------------------- #
