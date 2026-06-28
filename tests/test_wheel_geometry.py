@@ -130,7 +130,9 @@ def test_spiral_zero_twist_matches_rectangular():
     # area as the equivalent rectangular wheel (both toothless radial wedges).
     flat = build_wheel(_params("spiral", spiral_angle=0.0))
     rect = build_wheel(_params("rectangular"))
-    assert flat.electrodes[0].polygon.area == pytest.approx(rect.electrodes[0].polygon.area, abs=1e-6)
+    assert flat.electrodes[0].polygon.area == pytest.approx(
+        rect.electrodes[0].polygon.area, abs=1e-6
+    )
 
 
 def test_larger_spiral_angle_twists_more():

@@ -104,7 +104,17 @@ def test_wheel_outer_diameter_conflicts_with_num_segments(tmp_path, capsys):
 
 def test_wheel_spiral_shape_writes_both_files(tmp_path, capsys):
     rc = main(
-        ["wheel", "--out", str(tmp_path), "--name", "SW", "--shape", "spiral", "--spiral-angle", "45"]
+        [
+            "wheel",
+            "--out",
+            str(tmp_path),
+            "--name",
+            "SW",
+            "--shape",
+            "spiral",
+            "--spiral-angle",
+            "45",
+        ]
     )
     assert rc == 0
     assert "spiral wheel" in capsys.readouterr().out
@@ -116,8 +126,17 @@ def _sliver_spiral_args(out):
     # A 70° twist on a narrow 2 mm ring pinches the outer corner well below the
     # 20° floor (~13°), so the spiral-sliver advisory blocks.
     return [
-        "wheel", "--out", str(out), "--name", "SW",
-        "--shape", "spiral", "--spiral-angle", "70", "--ring-width", "2",
+        "wheel",
+        "--out",
+        str(out),
+        "--name",
+        "SW",
+        "--shape",
+        "spiral",
+        "--spiral-angle",
+        "70",
+        "--ring-width",
+        "2",
     ]
 
 
