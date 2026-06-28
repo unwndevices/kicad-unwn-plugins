@@ -105,7 +105,11 @@ The boundary `--shape` is `{rectangular,chevron,interdigitated,spiral}`. The
 wheel-only `spiral` is an iPod-style swirl: each toothless electrode boundary
 twists by `--spiral-angle` degrees (default 30) from the centre hole outward, so
 adjacent electrodes interleave by angle. `0` degenerates to straight radial bars;
-`num-fingers`/`tooth-depth` are ignored for it.
+`num-fingers`/`tooth-depth` are ignored for it. `--spiral-angle` is capped at 90°
+(a quarter-turn); a steep twist that pinches the electrode into acute outer-edge
+copper slivers raises a geometry-aware advisory (warned by default, refused under
+`--strict`) — ease it by reducing `--spiral-angle`, widening `--ring-width`, or
+adding segments.
 
 ### Trackpad
 

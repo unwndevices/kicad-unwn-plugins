@@ -104,7 +104,10 @@ class WheelParams:
         Boundary twist in **degrees** for the ``"spiral"`` shape only: how far one
         electrode boundary rotates from the inner (centre-hole) radius to the
         outer radius. Larger values swirl harder; ``0`` degenerates to straight
-        radial bars. Ignored by every other shape. Default ``30.0``.
+        radial bars. Ignored by every other shape. Default ``30.0``. The hard cap
+        is :data:`SPIRAL_ANGLE_LIMIT` (90°, a quarter-turn); a steep-but-legal
+        twist that tapers the electrode to acute outer-edge copper slivers raises
+        a geometry-aware advisory (see :mod:`captouch.params.advisory`).
     corner_radius:
         Extra convex-corner rounding (mm) applied to *all* shapes for ESD
         relief; ``0`` (default) leaves corners as built.
