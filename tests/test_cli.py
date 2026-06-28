@@ -102,6 +102,16 @@ def test_wheel_outer_diameter_conflicts_with_num_segments(tmp_path, capsys):
     assert "not both" in capsys.readouterr().out
 
 
+def test_wheel_spiral_shape_writes_both_files(tmp_path, capsys):
+    rc = main(
+        ["wheel", "--out", str(tmp_path), "--name", "SW", "--shape", "spiral", "--spiral-angle", "45"]
+    )
+    assert rc == 0
+    assert "spiral wheel" in capsys.readouterr().out
+    assert (tmp_path / "SW.kicad_mod").exists()
+    assert (tmp_path / "SW.kicad_sym").exists()
+
+
 def test_save_params_and_from_params_round_trip(tmp_path):
     out, regen, pj = tmp_path / "a", tmp_path / "b", tmp_path / "p.json"
     rc = main(
