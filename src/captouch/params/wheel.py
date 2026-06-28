@@ -357,4 +357,15 @@ WHEEL_PRESETS: dict[str, WheelParams] = {
         finger_diameter=8.0,
         num_fingers=3,
     ),
+    # iPod-style swirl: 8 toothless spiral electrodes with a 45 deg twist across a
+    # wide (6 mm) ring. Derived W = 7 mm keeps the Eq. 73 finger constraint.
+    "spiral": WheelParams(
+        name="CT_Wheel_Spiral",
+        num_segments=8,
+        segment_shape="spiral",
+        ring_width=6.0,
+        air_gap=0.5,
+        finger_diameter=8.0,
+        spiral_angle=45.0,
+    ),
 }

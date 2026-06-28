@@ -37,6 +37,7 @@ WHEEL_EXPECT = {
     "st_rotary": dict(num_segments=5, shape="chevron", W=8.0, A=0.5, finger=9.0, ring=5.0),
     "microchip": dict(num_segments=4, shape="interdigitated", W=6.0, A=1.0, finger=8.0, ring=4.0),
     "infineon": dict(num_segments=8, shape="chevron", W=7.0, A=0.5, finger=8.0, ring=5.0),
+    "spiral": dict(num_segments=8, shape="spiral", W=7.0, A=0.5, finger=8.0, ring=6.0),
 }
 
 # Trackpad: matrix size, pitch, gap. (Infineon AN234185 §4.3; Microchip AN2934
