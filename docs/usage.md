@@ -91,6 +91,7 @@ Or size the strip by its overall `--length` instead of `--num-segments` (see
 
 ```sh
 captouch wheel --preset microchip --num-segments 6
+captouch wheel --shape spiral --spiral-angle 45
 ```
 
 Wheel-specific: `--ring-width` (radial width) and `--arc-resolution` (polyline
@@ -99,6 +100,12 @@ centre-hole diameters — is **derived from the pitch** and printed on generatio
 Wheels are continuous, so there are no end dummies. Or size the ring by its target
 `--outer-diameter` instead of `--num-segments` (see
 [Design from overall size](#design-from-overall-size)).
+
+The boundary `--shape` is `{rectangular,chevron,interdigitated,spiral}`. The
+wheel-only `spiral` is an iPod-style swirl: each toothless electrode boundary
+twists by `--spiral-angle` degrees (default 30) from the centre hole outward, so
+adjacent electrodes interleave by angle. `0` degenerates to straight radial bars;
+`num-fingers`/`tooth-depth` are ignored for it.
 
 ### Trackpad
 
