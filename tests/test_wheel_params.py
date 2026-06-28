@@ -8,9 +8,12 @@ import pytest
 
 from captouch.params import (
     WHEEL_PRESETS,
+    WHEEL_SEGMENT_SHAPES,
     SliderError,
+    SliderParams,
     WheelError,
     WheelParams,
+    validate_slider,
     validate_wheel,
 )
 
@@ -151,3 +154,55 @@ def test_reject_tooth_depth_at_or_above_half_width():
 def test_non_finite_float_rejected(bad):
     with pytest.raises(WheelError, match="finite"):
         validate_wheel(WheelParams(air_gap=bad))
+
+
+# --------------------------------------------------------------------------- #
+# spiral shape
+# --------------------------------------------------------------------------- #
+def test_spiral_is_a_wheel_shape_not_a_slider_shape():
+    assert "spiral" in WHEEL_SEGMENT_SHAPES
+    # The slider must never offer spiral.
+    from captouch.params.slider import SEGMENT_SHAPES
+
+    assert "spiral" not in SEGMENT_SHAPES
+
+
+def test_validate_accepts_spiral():
+    validate_wheel(
+        WheelParams(
+            segment_shape="spiral",
+            num_segments=8,
+            ring_width=6.0,
+            air_gap=0.5,
+            finger_diameter=8.0,
+            spiral_angle=45.0,
+        )
+    )
+
+
+def test_spiral_amplitude_is_zero():
+    assert WheelParams(segment_shape="spiral").amplitude == 0.0
+
+
+@pytest.mark.parametrize("angle", [200.0, -181.0, 360.0])
+def test_reject_out_of_range_spiral_angle(angle):
+    with pytest.raises(WheelError, match="spiral_angle"):
+        validate_wheel(WheelParams(segment_shape="spiral", spiral_angle=angle))
+
+
+def test_spiral_zero_angle_is_allowed():
+    validate_wheel(WheelParams(segment_shape="spiral", spiral_angle=0.0))  # straight bars
+
+
+def test_spiral_skips_teeth_collision_check():
+    # A tooth_depth past W/2 fails for a toothed shape, but spiral ignores teeth,
+    # so the same value validates (amplitude resolves to 0).
+    bad_teeth = dict(segment_width=7.0, air_gap=0.5, finger_diameter=8.0, tooth_depth=4.0)
+    with pytest.raises(WheelError, match="tooth_depth"):
+        validate_wheel(WheelParams(segment_shape="chevron", **bad_teeth))
+    validate_wheel(WheelParams(segment_shape="spiral", **bad_teeth))  # must not raise
+
+
+def test_slider_rejects_spiral():
+    with pytest.raises(SliderError, match="segment_shape"):
+        validate_slider(SliderParams(segment_shape="spiral"))

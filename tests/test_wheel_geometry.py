@@ -10,7 +10,7 @@ from shapely.geometry import Point
 from captouch.geometry import build_wheel
 from captouch.params import WheelParams
 
-SHAPES = ["rectangular", "chevron", "interdigitated"]
+SHAPES = ["rectangular", "chevron", "interdigitated", "spiral"]
 
 
 def _params(shape, **kw):
@@ -112,3 +112,40 @@ def test_geometry_is_centred_on_origin():
     assert minx == pytest.approx(-maxx, abs=0.05)
     assert miny == pytest.approx(-maxy, abs=0.05)
     assert maxx == pytest.approx(geo.outer_radius, abs=0.05)
+
+
+# --------------------------------------------------------------------------- #
+# spiral: the twist is real and monotone
+# --------------------------------------------------------------------------- #
+def test_spiral_differs_from_untwisted():
+    # A swirled spiral must not coincide with its zero-twist degenerate (which is
+    # just straight radial bars) — proving spiral_angle actually bends the copper.
+    flat = build_wheel(_params("spiral", spiral_angle=0.0))
+    swirl = build_wheel(_params("spiral", spiral_angle=45.0))
+    assert [e.points for e in flat.electrodes] != [e.points for e in swirl.electrodes]
+
+
+def test_spiral_zero_twist_matches_rectangular():
+    # spiral_angle == 0 degenerates to straight radial bars: same per-electrode
+    # area as the equivalent rectangular wheel (both toothless radial wedges).
+    flat = build_wheel(_params("spiral", spiral_angle=0.0))
+    rect = build_wheel(_params("rectangular"))
+    assert flat.electrodes[0].polygon.area == pytest.approx(rect.electrodes[0].polygon.area, abs=1e-6)
+
+
+def test_larger_spiral_angle_twists_more():
+    # A bigger twist produces different geometry than a smaller one (not just a
+    # rigid rotation of the same shape).
+    small = build_wheel(_params("spiral", spiral_angle=20.0))
+    large = build_wheel(_params("spiral", spiral_angle=70.0))
+    assert [e.points for e in small.electrodes] != [e.points for e in large.electrodes]
+    # A harder twist lengthens each boundary, so its (uniform-width) gap strip
+    # removes more copper — every electrode ends up smaller.
+    assert large.electrodes[0].polygon.area < small.electrodes[0].polygon.area
+
+
+def test_spiral_ignores_teeth_fields():
+    # Spiral is toothless: num_fingers / tooth_depth have no effect on the copper.
+    a = build_wheel(_params("spiral", num_fingers=3, tooth_depth=None))
+    b = build_wheel(_params("spiral", num_fingers=9, tooth_depth=2.0))
+    assert [e.points for e in a.electrodes] == [e.points for e in b.electrodes]
