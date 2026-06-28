@@ -19,6 +19,14 @@ a bar:
 
 The gap is an offset of the boundary, so — as for the slider — it is uniform in
 millimetres everywhere (not in angle).
+
+The wheel-only ``"spiral"`` shape replaces the angular oscillation with a steady
+**twist**: each boundary is a radial polyline whose angular offset ramps linearly
+from 0 at the inner radius to ``spiral_angle`` (degrees) at the outer radius, so
+the electrodes interleave into a smooth iPod-style swirl. Because every spiral
+boundary is a rigid rotation of one another they never cross, and the same
+buffer-and-subtract construction yields exactly ``M`` swirled wedges. Spiral is
+toothless (``num_fingers`` / ``tooth_depth`` ignored, ``amplitude`` is ``0``).
 """
 
 from __future__ import annotations
@@ -95,7 +103,6 @@ def build_wheel(params: WheelParams) -> WheelGeometry:
     ro = params.outer_radius
     rm = params.mean_radius
     amp_ang = (params.amplitude / rm) if rm > 0 else 0.0  # angular half-amplitude
-    kind = SHAPE_TO_KIND[params.segment_shape]
     q = params.arc_resolution
 
     # Annulus: outer disk minus the centre keep-out.
@@ -108,11 +115,29 @@ def build_wheel(params: WheelParams) -> WheelGeometry:
     r_hi = ro + ext
     step = 2.0 * math.pi / m
 
+    spiral = params.segment_shape == "spiral"
+    if spiral:
+        # A spiral boundary is a radial polyline whose angular offset ramps
+        # linearly from 0 at r_lo to spiral_angle (rad) at r_hi — a steady twist
+        # instead of an oscillation. Every boundary is the same (da, rho) polyline
+        # rotated, so build it once. Tessellate finely enough that the swirl reads
+        # smooth, with a handful of points even for a tiny twist.
+        twist = math.radians(params.spiral_angle)
+        nsamp = max(8, round(params.arc_resolution * abs(params.spiral_angle) / 90.0))
+        spiral_wf: list[tuple[float, float]] = [
+            (twist * i / nsamp, r_lo + (r_hi - r_lo) * i / nsamp) for i in range(nsamp + 1)
+        ]
+    else:
+        kind = SHAPE_TO_KIND[params.segment_shape]
+
     strips = []
     for k in range(m):
         theta = (k + 0.5) * step  # boundary sits between two segment centres
         # waveform in (angular-offset, radius) space, then mapped to cartesian.
-        wf = waveform.boundary_points(0.0, amp_ang, params.num_fingers, r_lo, r_hi, kind)
+        if spiral:
+            wf = spiral_wf
+        else:
+            wf = waveform.boundary_points(0.0, amp_ang, params.num_fingers, r_lo, r_hi, kind)
         pts = [(rho * math.cos(theta + da), rho * math.sin(theta + da)) for (da, rho) in wf]
         strip = LineString(pts).buffer(
             a / 2.0, cap_style="flat", join_style="round", quad_segs=ARC_QUAD_SEGS
