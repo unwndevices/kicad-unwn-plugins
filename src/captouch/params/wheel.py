@@ -38,7 +38,23 @@ from .support import (
     validate_support,
 )
 
-__all__ = ["WheelParams", "WheelError", "validate_wheel", "WHEEL_PRESETS"]
+__all__ = [
+    "WheelParams",
+    "WheelError",
+    "validate_wheel",
+    "WHEEL_PRESETS",
+    "WHEEL_SEGMENT_SHAPES",
+]
+
+#: Allowed values for :attr:`WheelParams.segment_shape`. The wheel extends the
+#: slider's shapes with ``"spiral"`` (an iPod-style swirl), which the slider has
+#: no equivalent of — so it lives here, not in the shared ``SEGMENT_SHAPES``.
+WHEEL_SEGMENT_SHAPES = SEGMENT_SHAPES + ("spiral",)
+
+#: Largest accepted magnitude (degrees) for :attr:`WheelParams.spiral_angle`. A
+#: half-turn of twist across the ring is already an extreme swirl; beyond it the
+#: boundaries wind back on themselves and stop reading as a wheel.
+SPIRAL_ANGLE_LIMIT = 180.0
 
 
 class WheelError(SliderError):
@@ -60,9 +76,13 @@ class WheelParams:
         Number of electrodes around the ring. >=3 is required (a wheel "only
         needs three elements"; guidelines section 3.1).
     segment_shape:
-        Boundary style, as for the slider: ``"rectangular"`` (radial bars),
-        ``"chevron"`` (triangle-wave arcs), or ``"interdigitated"`` (square-wave
-        comb teeth). Teeth oscillate *angularly* and run *radially*.
+        Boundary style. The slider's three (``"rectangular"`` radial bars,
+        ``"chevron"`` triangle-wave arcs, ``"interdigitated"`` square-wave comb
+        teeth — teeth oscillate *angularly* and run *radially*) plus the
+        wheel-only ``"spiral"``: a smooth iPod-style swirl where each boundary
+        twists by ``spiral_angle`` from the centre hole outward, so adjacent
+        electrodes interleave by angle. Spiral has no teeth (see
+        :attr:`spiral_angle`); allowed values are :data:`WHEEL_SEGMENT_SHAPES`.
     segment_width:
         Arc width ``W`` of a segment at the mean radius. ``None`` (default)
         derives it from the finger as ``finger_diameter - 2 * air_gap``.
@@ -76,7 +96,12 @@ class WheelParams:
         Teeth per boundary (spread radially across the ring width).
     tooth_depth:
         Half-amplitude (mm) of the boundary waveform at the mean radius. ``None``
-        derives ``0.3 * W``. Must stay below ``W / 2``.
+        derives ``0.3 * W``. Must stay below ``W / 2``. Ignored for ``"spiral"``.
+    spiral_angle:
+        Boundary twist in **degrees** for the ``"spiral"`` shape only: how far one
+        electrode boundary rotates from the inner (centre-hole) radius to the
+        outer radius. Larger values swirl harder; ``0`` degenerates to straight
+        radial bars. Ignored by every other shape. Default ``30.0``.
     corner_radius:
         Extra convex-corner rounding (mm) applied to *all* shapes for ESD
         relief; ``0`` (default) leaves corners as built.
@@ -112,6 +137,7 @@ class WheelParams:
     finger_diameter: float = 8.0
     num_fingers: int = 3
     tooth_depth: float | None = None
+    spiral_angle: float = 30.0
     corner_radius: float = 0.0
     tip_radius: float = 0.15
     arc_resolution: int = 16
@@ -144,8 +170,12 @@ class WheelParams:
 
     @property
     def amplitude(self) -> float:
-        """Resolved boundary half-amplitude (``tooth_depth`` or ``0.3 * W``)."""
-        if self.segment_shape == "rectangular":
+        """Resolved boundary half-amplitude (``tooth_depth`` or ``0.3 * W``).
+
+        The toothless shapes (``"rectangular"`` straight bars and ``"spiral"``,
+        whose twist replaces teeth) resolve to ``0.0``.
+        """
+        if self.segment_shape in ("rectangular", "spiral"):
             return 0.0
         if self.tooth_depth is not None:
             return self.tooth_depth
@@ -221,8 +251,10 @@ def validate_wheel(p: WheelParams) -> WheelParams:
     require_finite(p, WheelError)
     validate_support(p, WheelError)
     validate_sensing(p, WheelError)
-    if p.segment_shape not in SEGMENT_SHAPES:
-        raise WheelError(f"segment_shape must be one of {SEGMENT_SHAPES}, got {p.segment_shape!r}")
+    if p.segment_shape not in WHEEL_SEGMENT_SHAPES:
+        raise WheelError(
+            f"segment_shape must be one of {WHEEL_SEGMENT_SHAPES}, got {p.segment_shape!r}"
+        )
     if p.num_segments < 3:
         raise WheelError(f"num_segments must be >=3 for a usable wheel, got {p.num_segments}")
     if p.width <= 0:
@@ -259,7 +291,7 @@ def validate_wheel(p: WheelParams) -> WheelParams:
             f"mean radius and so the centre hole."
         )
 
-    if p.segment_shape != "rectangular":
+    if p.segment_shape not in ("rectangular", "spiral"):
         if p.num_fingers < 1:
             raise WheelError(f"num_fingers must be >=1, got {p.num_fingers}")
         if not 0 < p.amplitude < p.width / 2.0:
@@ -267,6 +299,15 @@ def validate_wheel(p: WheelParams) -> WheelParams:
                 f"tooth_depth (amplitude {p.amplitude:.3f} mm) must be in "
                 f"(0, W/2={p.width / 2.0:.3f}) so adjacent teeth do not collide"
             )
+
+    # The spiral swirl is a rigid rotation per boundary; an absurd twist winds the
+    # boundaries back on themselves and stops reading as a wheel. ``0`` is allowed
+    # (it degenerates to straight radial bars). Finiteness is covered above.
+    if abs(p.spiral_angle) > SPIRAL_ANGLE_LIMIT:
+        raise WheelError(
+            f"spiral_angle {p.spiral_angle} deg is too extreme; keep "
+            f"|spiral_angle| <= {SPIRAL_ANGLE_LIMIT:.0f} deg (0 = straight radial bars)"
+        )
 
     if not p.relax_finger_constraint:
         lhs = p.width + 2.0 * p.air_gap

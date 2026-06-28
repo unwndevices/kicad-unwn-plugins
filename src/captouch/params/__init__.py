@@ -80,6 +80,7 @@ from .trackpad import (
 )
 from .wheel import (
     WHEEL_PRESETS,
+    WHEEL_SEGMENT_SHAPES,
     WheelError,
     WheelParams,
     validate_wheel,
@@ -111,6 +112,7 @@ __all__ = [
     "WheelError",
     "validate_wheel",
     "WHEEL_PRESETS",
+    "WHEEL_SEGMENT_SHAPES",
     "TrackpadParams",
     "TrackpadError",
     "validate_trackpad",
