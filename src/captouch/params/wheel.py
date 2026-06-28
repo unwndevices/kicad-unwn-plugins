@@ -52,9 +52,12 @@ __all__ = [
 WHEEL_SEGMENT_SHAPES = SEGMENT_SHAPES + ("spiral",)
 
 #: Largest accepted magnitude (degrees) for :attr:`WheelParams.spiral_angle`. A
-#: half-turn of twist across the ring is already an extreme swirl; beyond it the
-#: boundaries wind back on themselves and stop reading as a wheel.
-SPIRAL_ANGLE_LIMIT = 180.0
+#: quarter-turn of twist across the ring is already a coarse sanity bound; beyond
+#: it the wedges stop reading as a sensible wheel. This is only a sanity ceiling —
+#: a steep-but-legal twist can still taper the electrode into DRC-failing copper
+#: slivers, which the geometry-aware advisory in :mod:`captouch.params.advisory`
+#: flags (warn by default, hard fail under ``--strict``).
+SPIRAL_ANGLE_LIMIT = 90.0
 
 
 class WheelError(SliderError):

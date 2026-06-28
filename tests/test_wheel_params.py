@@ -184,10 +184,18 @@ def test_spiral_amplitude_is_zero():
     assert WheelParams(segment_shape="spiral").amplitude == 0.0
 
 
-@pytest.mark.parametrize("angle", [200.0, -181.0, 360.0])
+@pytest.mark.parametrize("angle", [90.1, -120.0, 200.0, 360.0])
 def test_reject_out_of_range_spiral_angle(angle):
+    # The hard ceiling is a quarter-turn (90 deg); anything past it is rejected.
     with pytest.raises(WheelError, match="spiral_angle"):
         validate_wheel(WheelParams(segment_shape="spiral", spiral_angle=angle))
+
+
+@pytest.mark.parametrize("angle", [90.0, -90.0, 60.0, 88.0])
+def test_accept_spiral_angle_up_to_the_cap(angle):
+    # Exactly the cap and anything below it validate (steep twists are a separate
+    # advisory, not a hard error).
+    validate_wheel(WheelParams(segment_shape="spiral", spiral_angle=angle))
 
 
 def test_spiral_zero_angle_is_allowed():
