@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
+
 import pytest
 
 from captouch.params import (
+    WHEEL_PRESETS,
     SliderParams,
     TrackpadParams,
     WheelParams,
@@ -109,6 +112,47 @@ def test_estimate_cp_pf_parallel_plate_value():
     assert estimate_cp_pf(96.0, 1.6) == pytest.approx(2.39, abs=0.05)
     # well under the self-cap budget headroom.
     assert estimate_cp_pf(96.0, 1.6) < CP_BUDGET_SELF_PF
+
+
+# -- spiral copper slivers (wheel only) -------------------------------------- #
+def test_steep_spiral_triggers_sliver_advisory_and_blocks():
+    # The 45° preset on a narrow (2 mm) ring drives the outer-edge corner well
+    # below the 20° minimum (~13°), so exactly one blocking advisory fires.
+    p = replace(WHEEL_PRESETS["spiral"], ring_width=2.0, spiral_angle=70.0)
+    adv = _one(check_advisories(p), "spiral copper slivers")
+    assert adv.blocks is True
+    assert "DRC" in adv.message and "spiral_angle" in adv.message
+
+
+def test_max_legal_spiral_angle_still_slivers():
+    # 90° is the hard cap, yet on the stock 6 mm ring it still pinches to ~20°,
+    # so the geometry-aware guard catches what the sanity ceiling alone cannot.
+    p = replace(WHEEL_PRESETS["spiral"], spiral_angle=90.0)
+    adv = _one(check_advisories(p), "spiral copper slivers")
+    assert adv.blocks is True
+
+
+def test_spiral_preset_has_no_sliver_advisory():
+    # The shipped 45° / 6 mm-ring preset is a ~35° outer corner: comfortably quiet.
+    assert "spiral copper slivers" not in _features(check_advisories(WHEEL_PRESETS["spiral"]))
+
+
+def test_zero_angle_spiral_has_no_sliver_advisory():
+    # spiral_angle 0 degenerates to radial bars — no taper, no sliver.
+    p = replace(WHEEL_PRESETS["spiral"], spiral_angle=0.0)
+    assert "spiral copper slivers" not in _features(check_advisories(p))
+
+
+@pytest.mark.parametrize("shape", ["rectangular", "chevron"])
+def test_non_spiral_wheel_never_slivers(shape):
+    # The guard is spiral-only; toothed/radial wheels never raise it.
+    p = WheelParams(segment_shape=shape, spiral_angle=88.0)
+    assert "spiral copper slivers" not in _features(check_advisories(p))
+
+
+def test_slider_never_gets_spiral_sliver_advisory():
+    # _wheel_spiral_advisory must not leak into the shared self-cap path.
+    assert "spiral copper slivers" not in _features(check_advisories(SliderParams()))
 
 
 def test_unsupported_type_raises():

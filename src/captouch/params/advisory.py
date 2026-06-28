@@ -32,6 +32,7 @@ This module imports the concrete widget params for its per-widget dispatch and i
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass
 
 from .keypad import BUTTON_GAP_MM, KeypadParams
@@ -54,6 +55,7 @@ __all__ = [
     "TRACKPAD_OVERLAY_MIN_MM",
     "TRACKPAD_OVERLAY_MAX_MM",
     "BUTTON_OVERLAY_SIZE_FACTOR",
+    "SPIRAL_MIN_OUTER_CORNER_DEG",
 ]
 
 # -- physical / guideline constants ------------------------------------------ #
@@ -76,6 +78,12 @@ TRACKPAD_OVERLAY_MAX_MM = 3.0
 #: A self-cap button electrode dimension should be at least this multiple of the
 #: overlay thickness (TI rule of thumb; guidelines §5.7).
 BUTTON_OVERLAY_SIZE_FACTOR = 3.0
+#: Smallest sensible outer-edge wedge corner (degrees) for a spiral wheel. A
+#: steeper twist tapers the electrode to an acute copper sliver at the outer arc
+#: that risks failing KiCad DRC; below this the advisory fires. Calibrated against
+#: the empirical DRC boundary (an 8-segment / 6 mm-ring / finger-8 / gap-0.5 wheel
+#: is clean at ≤80° → ~22° corner, but slivers at ≥90° → ~20° corner).
+SPIRAL_MIN_OUTER_CORNER_DEG = 20.0
 
 
 @dataclass(frozen=True)
@@ -179,6 +187,45 @@ def _overlay_sizing_advisory(
             f"{need:.2f} mm (finger {params.finger_diameter:.1f} mm + 2 × "
             f"{params.overlay_thickness:.2f} mm overlay; Microchip AN2934 §1.3) — the "
             f"finger overhangs the electrode, hurting linearity. Widen it or thin the overlay"
+        ),
+        blocks=True,
+    )
+
+
+def _wheel_spiral_advisory(params: WheelParams) -> Advisory | None:
+    """Steep-spiral copper-sliver guard for a wheel boundary (geometry-aware).
+
+    A spiral boundary twists by ``spiral_angle`` from the inner radius to the
+    outer radius, so its tangent leans away from the radial direction by a growing
+    angle as the radius grows. At the outer arc — the worst case — the wedge corner
+    where the twisting boundary meets the outer edge is the *complement* of that
+    lean, so a steeper twist (or a narrower ring, which raises the twist gradient)
+    pinches the electrode into an acute copper sliver that can fail KiCad DRC.
+
+    Returns ``None`` unless this is an actually-twisting spiral whose estimated
+    outer-edge corner is below :data:`SPIRAL_MIN_OUTER_CORNER_DEG`; otherwise a
+    blocking advisory naming the angle, threshold, and the concrete fixes.
+    """
+    if params.segment_shape != "spiral" or params.spiral_angle == 0:
+        return None
+    # ``span`` matches the geometry's r_hi - r_lo (the boundaries are extended one
+    # air_gap past each ring edge so the gap strips cut cleanly); the twist climbs
+    # linearly across it, giving a constant gradient g (rad/mm).
+    span = params.ring_width + 2.0 * params.air_gap
+    g = math.radians(abs(params.spiral_angle)) / span
+    # The boundary tangent makes angle φ = atan(outer_radius·g) with the radial
+    # direction; the sharp wedge corner at the outer arc is the complement of φ.
+    acute_deg = math.degrees(math.atan2(1.0, params.outer_radius * g))
+    if acute_deg >= SPIRAL_MIN_OUTER_CORNER_DEG:
+        return None
+    return Advisory(
+        feature="spiral copper slivers",
+        message=(
+            f"spiral_angle {params.spiral_angle:.0f}° tapers the electrode to an "
+            f"~{acute_deg:.0f}° corner at the outer edge, below the "
+            f"{SPIRAL_MIN_OUTER_CORNER_DEG:.0f}° minimum — such an acute copper sliver "
+            f"may fail PCB DRC (fab-dependent). Reduce spiral_angle, widen ring_width, "
+            f"or add segments to open the corner"
         ),
         blocks=True,
     )
@@ -292,9 +339,16 @@ def check_advisories(params: WidgetParams) -> list[Advisory]:
     if isinstance(params, KeypadParams):
         return _keypad_advisories(params)
     if isinstance(params, WheelParams):
-        return _self_cap_advisories(
+        # Shared self-cap items, plus the wheel-only spiral sliver guard (kept out
+        # of _self_cap_advisories, which the slider also calls — the slider has no
+        # spiral shape and must be unaffected).
+        out = _self_cap_advisories(
             params, params.ring_width, "ring width", params.width * params.ring_width
         )
+        spiral = _wheel_spiral_advisory(params)
+        if spiral is not None:
+            out.append(spiral)
+        return out
     if isinstance(params, SliderParams):
         return _self_cap_advisories(
             params, params.segment_height, "segment height", params.width * params.segment_height
