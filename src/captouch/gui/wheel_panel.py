@@ -20,8 +20,7 @@ from PySide6.QtWidgets import (
 )
 
 from ..geometry import build_wheel
-from ..params import WHEEL_PRESETS, WheelError, WheelParams
-from ..params.slider import SEGMENT_SHAPES
+from ..params import WHEEL_PRESETS, WHEEL_SEGMENT_SHAPES, WheelError, WheelParams
 from ._panel_base import PRESET_PLACEHOLDER as _PRESET_PLACEHOLDER
 from ._panel_base import PanelBase
 
@@ -58,7 +57,7 @@ class WheelPanel(PanelBase):
         # Shape & count.
         self.name = QLineEdit()
         self.shape = QComboBox()
-        self.shape.addItems(SEGMENT_SHAPES)
+        self.shape.addItems(WHEEL_SEGMENT_SHAPES)
         self.num_segments = self._spin(3, 32, 1)
         # Design-from-size: enter an overall outer diameter; the count is derived.
         self.diameter_driven = QCheckBox("Design from outer diameter")
@@ -96,6 +95,13 @@ class WheelPanel(PanelBase):
         tf.addRow("Teeth per boundary", self.num_fingers)
         tf.addRow("Tooth depth", self._with_auto(self.tooth_depth, self.tooth_depth_auto))
         root.addWidget(teeth_box)
+
+        # Spiral swirl (spiral shape only).
+        self.spiral_angle = self._dspin(0.0, 180.0, 5.0)
+        spiral_box = QGroupBox("Spiral (swirl)")
+        spf = QFormLayout(spiral_box)
+        spf.addRow("Twist angle (deg)", self.spiral_angle)
+        root.addWidget(spiral_box)
 
         # Relief & rendering.
         self.corner_radius = self._dspin(0.0, 10.0, 0.1)
@@ -156,6 +162,10 @@ class WheelPanel(PanelBase):
                 self.finger_diameter: "Finger contact-disc diameter (mm) used by the W + 2A check.",
                 self.num_fingers: "Teeth per shared boundary (chevron / interdigitated).",
                 self.tooth_depth: "Boundary half-amplitude (mm). Auto = 0.3·W; must stay below W/2.",
+                self.spiral_angle: (
+                    "Spiral shape only: boundary twist from the centre hole outward "
+                    "(degrees). 0 = straight radial bars; larger = a tighter swirl."
+                ),
                 self.corner_radius: "Extra ESD convex-corner rounding (mm).",
                 self.tip_radius: "Rounding (mm) for sharp chevron tooth-tips (ESD / etch relief).",
                 self.arc_resolution: "Circle tessellation: polyline segments per 90° of arc.",
@@ -164,6 +174,23 @@ class WheelPanel(PanelBase):
         )
 
     # -- signals ------------------------------------------------------------ #
+    def _on_shape(self) -> None:
+        """Gate the teeth controls and the spiral twist on the chosen shape.
+
+        Like the base, the teeth controls (``num_fingers`` / ``tooth_depth``)
+        are enabled only for the toothed shapes — here that means *not*
+        rectangular and *not* spiral, since the spiral's twist replaces teeth.
+        The spiral twist control is enabled only for the spiral shape. Emits
+        ``changed`` as the base does.
+        """
+        shape = self.shape.currentText()
+        teeth = shape not in ("rectangular", "spiral")
+        self.num_fingers.setEnabled(teeth)
+        self.tooth_depth_auto.setEnabled(teeth)
+        self.tooth_depth.setEnabled(teeth and not self.tooth_depth_auto.isChecked())
+        self.spiral_angle.setEnabled(shape == "spiral")
+        self._emit()
+
     def _on_diameter_mode(self, *args) -> None:
         """Toggle between count-driven and diameter-driven segment entry."""
         size = self.diameter_driven.isChecked()
@@ -212,6 +239,7 @@ class WheelPanel(PanelBase):
             finger_diameter=self.finger_diameter.value(),
             num_fingers=self.num_fingers.value(),
             tooth_depth=None if self.tooth_depth_auto.isChecked() else self.tooth_depth.value(),
+            spiral_angle=self.spiral_angle.value(),
             corner_radius=self.corner_radius.value(),
             tip_radius=self.tip_radius.value(),
             arc_resolution=self.arc_resolution.value(),
@@ -242,6 +270,7 @@ class WheelPanel(PanelBase):
             self.air_gap.setValue(p.air_gap)
             self.finger_diameter.setValue(p.finger_diameter)
             self.num_fingers.setValue(p.num_fingers)
+            self.spiral_angle.setValue(p.spiral_angle)
             self.corner_radius.setValue(p.corner_radius)
             self.tip_radius.setValue(p.tip_radius)
             self.arc_resolution.setValue(p.arc_resolution)
