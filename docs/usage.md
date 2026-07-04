@@ -451,11 +451,13 @@ captouch gui            # or: captouch-gui
   via knobs and a **sense rows** (1 single / 2 dual) control.
 - The keypad panel has a grid size, a button **shape** (rect / circle / diamond),
   size, separation, and corner-radius (disabled for a circle).
-- The trackpad panel has a **Mask** group — shape (rect / rrect / circle), a
-  **clip mode** (inscribe / conform, active only for a curved mask), and a
-  corner-radius (rrect) or radius (circle; *Auto* = inscribed) control — that
-  reshapes the live preview. The status bar flags any channels a mask shrinks
-  below 50 % area so you can disable them in firmware.
+- The trackpad panel has a **Controller** selector (generic / `iqs550`) that
+  enforces the chosen chip's channel caps (an over-cap matrix outlines the row/col
+  field), and a **Mask** group — shape (rect / rrect / circle), a **clip mode**
+  (inscribe / conform, active only for a curved mask), and a corner-radius (rrect)
+  or radius (circle; *Auto* = inscribed) control — that reshapes the live preview.
+  The status bar flags any channels a mask shrinks below 50 % area so you can
+  disable them in firmware, and echoes the active device's caps.
 - Every panel has a **Support copper (optional)** group — a *Hatched ground pour
   (B.Cu)* checkbox with margin / hatch-width / pitch spins, and a *Guard / ESD ring
   (F.Cu)* checkbox with width / gap / break spins plus a mask-open toggle. Each
@@ -481,6 +483,10 @@ captouch gui            # or: captouch-gui
 - **Export footprint + symbol…** writes the pair for the geometry on screen.
 - **Export DXF…** writes a `.dxf` mechanical drawing of the same geometry (see
   [DXF export](#dxf-export)).
+- **Export IQS550 config…** (enabled only when the trackpad's Controller is
+  `iqs550`) writes the sensor-config C header — Total Rx/Tx plus the per-node
+  Active-channels disable map — the same artifact as the CLI `--iqs550-config`
+  (see [Device profiles](#device-profiles-iqs550)).
 
 `captouch gui --check` constructs the app and exits immediately — a headless smoke
 test (used to verify the packaged binary).
