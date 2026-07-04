@@ -249,6 +249,20 @@ def test_trackpad_masked_copper_drc_clean(kw, rows, cols, tmp_path):
     assert report["unconnected_items"] == [], report["unconnected_items"]
 
 
+def test_iqs550_preset_drc_clean(tmp_path):
+    # The shipped IQS550 preset (10×10 conform circle at 6 mm pitch) is larger than
+    # the parametrized conform cases above; gate that the actual preset a user builds
+    # is DRC-clean AND fully connected in KiCad.
+    from captouch.params import TRACKPAD_PRESETS
+
+    geo = build_trackpad(TRACKPAD_PRESETS["iqs550"])
+    board = tmp_path / "board.kicad_pcb"
+    board.write_text(widget_board_text(geo, nets=trackpad_net_map(geo)))
+    report = _drc(board, tmp_path / "drc.json")
+    assert report["violations"] == [], report["violations"]
+    assert report["unconnected_items"] == [], report["unconnected_items"]
+
+
 @pytest.mark.parametrize(
     "kw",
     [

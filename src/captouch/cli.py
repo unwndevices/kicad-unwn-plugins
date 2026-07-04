@@ -17,7 +17,7 @@ from pathlib import Path
 from typing import Any
 
 from . import __version__, engine
-from .export import dxf, footprint, symbol
+from .export import dxf, footprint, iqs550, symbol
 from .geometry import (
     build_keypad,
     build_mutual_slider,
@@ -30,6 +30,7 @@ from .params import (
     BUTTON_SHAPES,
     CLIP_MODES,
     DEFAULT_PROFILE,
+    DEVICES,
     DISABLE_AREA_FRACTION,
     FAB_PROFILES,
     KEYPAD_PRESETS,
@@ -258,6 +259,25 @@ def _maybe_write_dxf(args: argparse.Namespace, geo) -> None:
         path = args.out / f"{geo.params.name}.dxf"
         dxf.write_widget_dxf(geo, path)
         print(f"wrote {path}")
+
+
+def _maybe_write_iqs550_config(args: argparse.Namespace, geo, text: str | None) -> None:
+    """Write the pre-rendered IQS550 config header if ``--iqs550-config`` was given.
+
+    *text* is rendered up front (inside the build ``try``) so a matrix that does
+    not fit the chip aborts before any file is written; here it is only flushed to
+    disk, alongside a one-line node-disable summary.
+    """
+    path = getattr(args, "iqs550_config", None)
+    if path is None or text is None:
+        return
+    path.write_text(text, encoding="utf-8")
+    disabled = sum(not e for row in geo.node_enable_map() for e in row)
+    print(f"wrote {path}")
+    print(
+        f"  IQS550 config: Total Rx={geo.params.num_rows} Tx={geo.params.num_cols}, "
+        f"{disabled} of {geo.params.num_nodes} node(s) disabled in the Active-channels map"
+    )
 
 
 def _add_output_args(p: argparse.ArgumentParser) -> None:
@@ -689,6 +709,7 @@ def _trackpad_params_from_args(args: argparse.Namespace) -> TrackpadParams:
         ("clip_mode", "clip_mode"),
         ("corner_radius", "corner_radius"),
         ("radius", "radius"),
+        ("device", "device"),
     ):
         value = getattr(args, flag)
         if value is not None:
@@ -730,13 +751,17 @@ def _trackpad(args: argparse.Namespace) -> int:
         return _list_fab_profiles()
     if args.list_presets:
         for key, p in TRACKPAD_PRESETS.items():
-            print(f"{key:10} {p.name}  ({p.num_rows}x{p.num_cols} diamonds)")
+            dev = f", device={p.device}" if p.device else ""
+            print(f"{key:10} {p.name}  ({p.num_rows}x{p.num_cols} diamonds{dev})")
         return 0
 
     try:
         params = _trackpad_params_from_args(args)
         geo = build_trackpad(params)
-    except SliderError as exc:  # TrackpadError subclasses SliderError
+        # Render the device config up front so an over-envelope matrix fails before
+        # any file is written (IQS550ConfigError is a ValueError, not a SliderError).
+        iqs_text = iqs550.render_iqs550_config(geo) if args.iqs550_config else None
+    except (SliderError, iqs550.IQS550ConfigError) as exc:  # TrackpadError <: SliderError
         print(f"error: {exc}")
         return 2
 
@@ -754,6 +779,7 @@ def _trackpad(args: argparse.Namespace) -> int:
     sym_path.write_text(symbol.trackpad_symbol_lib_text(geo), encoding="utf-8")
     _maybe_save_params(args, params)
     _maybe_write_dxf(args, geo)
+    _maybe_write_iqs550_config(args, geo, iqs_text)
 
     print(f"wrote {fp_path}")
     print(f"wrote {sym_path}")
@@ -763,6 +789,8 @@ def _trackpad(args: argparse.Namespace) -> int:
         f"pitch={params.diamond_pitch:.2f} gap={params.diamond_gap:.2f} mm, "
         f"outline {params.width:.2f} x {params.height:.2f} mm"
     )
+    if params.device:
+        print(f"    device: {DEVICES[params.device].channels_note()}")
     _report_panel(params)
     _report_partial_channels(geo)
     _report_support(geo)
@@ -816,8 +844,17 @@ def _add_trackpad_parser(sub: argparse._SubParsersAction) -> None:
     p.add_argument("--list-presets", action="store_true", help="list presets and exit")
     p.add_argument("--preset", choices=sorted(TRACKPAD_PRESETS), help="start from a vendor preset")
     p.add_argument("--name", help="footprint/symbol base name")
-    p.add_argument("--num-rows", type=int, help="Rx (sense) rows (>= 2, no upper cap)")
-    p.add_argument("--num-cols", type=int, help="Tx (drive) columns (>= 2, no upper cap)")
+    p.add_argument(
+        "--num-rows", type=int, help="Rx (sense) rows (>= 2; capped by --device if set)"
+    )
+    p.add_argument(
+        "--num-cols", type=int, help="Tx (drive) columns (>= 2; capped by --device if set)"
+    )
+    p.add_argument(
+        "--device",
+        choices=sorted(DEVICES),
+        help="enforce a touch-controller's channel caps (e.g. iqs550: 10 Rx x 15 Tx)",
+    )
     p.add_argument(
         "--panel-width",
         type=float,
@@ -854,6 +891,13 @@ def _add_trackpad_parser(sub: argparse._SubParsersAction) -> None:
         type=float,
         help="circle mask radius (mm; with --mask-shape circle; "
         "default = inscribed 0.5·min(width,height))",
+    )
+    p.add_argument(
+        "--iqs550-config",
+        type=Path,
+        metavar="FILE",
+        help="also write an IQS550 sensor-config C header (Total Rx/Tx + the "
+        "per-node Active-channels disable map); requires the matrix to fit 10 Rx x 15 Tx",
     )
     _add_output_args(p)
     _add_support_args(p)

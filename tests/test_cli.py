@@ -417,6 +417,7 @@ def test_trackpad_min_feature_tracks_fab_profile():
         clip_mode=None,
         corner_radius=None,
         radius=None,
+        device=None,
         # support-copper flags (all off / unset)
         ground_hatch=False,
         guard_ring=False,
@@ -617,3 +618,49 @@ def test_from_params_dxf_flag_writes_dxf(tmp_path):
     regen = tmp_path / "regen"
     assert main(["from-params", str(pj), "--out", str(regen), "--dxf"]) == 0
     assert (regen / "T.dxf").exists()
+
+
+# -- IQS550 device profile + config export ---------------------------------- #
+def test_trackpad_device_iqs550_rejects_over_cap(tmp_path, capsys):
+    rc = main(
+        ["trackpad", "--out", str(tmp_path), "--name", "T", "--device", "iqs550",
+         "--num-rows", "12", "--num-cols", "8"]
+    )
+    assert rc == 2
+    assert "exceeds the Azoteq IQS550" in capsys.readouterr().out
+    assert not (tmp_path / "T.kicad_mod").exists()  # nothing written on failure
+
+
+def test_trackpad_iqs550_preset_writes_files_and_reports_device(tmp_path, capsys):
+    rc = main(["trackpad", "--out", str(tmp_path), "--preset", "iqs550"])
+    assert rc == 0
+    out = capsys.readouterr().out
+    assert "device: Azoteq IQS550" in out
+    assert (tmp_path / "CT_Trackpad_IQS550.kicad_mod").exists()
+
+
+def test_trackpad_iqs550_config_writes_header(tmp_path, capsys):
+    header = tmp_path / "cfg.h"
+    rc = main(
+        ["trackpad", "--out", str(tmp_path), "--preset", "iqs550",
+         "--iqs550-config", str(header)]
+    )
+    assert rc == 0
+    assert f"wrote {header}" in capsys.readouterr().out
+    text = header.read_text()
+    assert "iqs550_active_channels[30]" in text
+    assert "IQS550_TOTAL_RX" in text
+
+
+def test_trackpad_iqs550_config_rejects_over_cap_before_writing(tmp_path, capsys):
+    header = tmp_path / "cfg.h"
+    rc = main(
+        ["trackpad", "--out", str(tmp_path), "--name", "T",
+         "--num-rows", "20", "--num-cols", "20",
+         "--mask-shape", "circle", "--clip-mode", "conform",
+         "--iqs550-config", str(header)]
+    )
+    assert rc == 2
+    assert "does not fit" in capsys.readouterr().out
+    assert not header.exists()
+    assert not (tmp_path / "T.kicad_mod").exists()
