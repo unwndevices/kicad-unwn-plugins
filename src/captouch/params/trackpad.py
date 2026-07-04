@@ -36,6 +36,7 @@ from dataclasses import dataclass, replace
 from typing import Any
 
 from ._validate import require_finite
+from .device import DEVICES, validate_device_matrix
 from .sensing import BOARD_THICKNESS, OVERLAY_ER, validate_sensing
 from .slider import SliderError
 from .support import (
@@ -56,6 +57,7 @@ __all__ = [
     "MASK_SHAPES",
     "CLIP_MODES",
     "DISABLE_AREA_FRACTION",
+    "DEVICES",
 ]
 
 #: Min annular ring (mm) required between a via's drill and its outer diameter
@@ -176,6 +178,13 @@ class TrackpadParams:
         The diamond pitch is never stretched, so the diamonds stay square.
     name:
         Base name for the emitted footprint / symbol.
+    device:
+        Optional touch-controller profile (``"iqs550"``) whose channel-count caps
+        the matrix must satisfy. ``None`` (default) is the device-agnostic path —
+        only the AZD068 layout rules apply, with no upper cap on rows/cols. When
+        set to a key in :data:`DEVICES` the build additionally enforces the chip's
+        ``max_rx`` (rows), ``max_tx`` (cols), and ``max_nodes`` limits (e.g. the
+        IQS550's 10 Rx × 15 Tx / 150 nodes). See :mod:`captouch.params.device`.
     ground_hatch, ground_margin, ground_hatch_width, ground_hatch_pitch,
     guard_ring, guard_width, guard_gap, guard_break, guard_mask_open:
         Optional, **default-off** board-level support copper (the guard / ESD ring
@@ -201,6 +210,7 @@ class TrackpadParams:
     panel_width: float | None = None
     panel_height: float | None = None
     name: str = "CT_Trackpad"
+    device: str | None = None
 
     # -- optional board-level support copper (default off) ----------------- #
     ground_hatch: bool = False
@@ -337,6 +347,9 @@ def validate_trackpad(p: TrackpadParams, *, min_lines: int = MIN_LINES) -> Track
     for field, val in (("num_rows", p.num_rows), ("num_cols", p.num_cols)):
         if val < min_lines:
             raise TrackpadError(f"{field} must be >= {min_lines}, got {val}")
+    # A selected device profile adds the chip's hard channel caps on top of the
+    # generic (uncapped) layout rules (num_rows → Rx, num_cols → Tx).
+    validate_device_matrix(p.device, p.num_rows, p.num_cols, p.num_nodes, TrackpadError)
     for field, pval in (("panel_width", p.panel_width), ("panel_height", p.panel_height)):
         if pval is not None and pval <= 0:
             raise TrackpadError(f"{field} must be > 0 when set, got {pval}")

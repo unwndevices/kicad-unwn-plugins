@@ -16,6 +16,12 @@ from .advisory import (
     estimate_cp_pf,
     recommended_series_r,
 )
+from .device import (
+    DEVICES,
+    DeviceProfile,
+    device_profile,
+    validate_device_matrix,
+)
 from .fab import (
     DEFAULT_PROFILE,
     FAB_PROFILES,
@@ -121,6 +127,10 @@ __all__ = [
     "CLIP_MODES",
     "DISABLE_AREA_FRACTION",
     "MIN_LINES",
+    "DeviceProfile",
+    "DEVICES",
+    "device_profile",
+    "validate_device_matrix",
     "FabRules",
     "FabViolation",
     "FAB_PROFILES",
