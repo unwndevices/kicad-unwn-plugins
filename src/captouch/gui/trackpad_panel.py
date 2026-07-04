@@ -19,11 +19,14 @@ from PySide6.QtWidgets import (
 )
 
 from ..geometry import build_trackpad
-from ..params import CLIP_MODES, MASK_SHAPES, TRACKPAD_PRESETS, TrackpadParams
+from ..params import CLIP_MODES, DEVICES, MASK_SHAPES, TRACKPAD_PRESETS, TrackpadParams
 from ._panel_base import PRESET_PLACEHOLDER as _PRESET_PLACEHOLDER
 from ._panel_base import PanelBase
 
 __all__ = ["TrackpadPanel"]
+
+#: First entry of the controller selector: the device-agnostic (uncapped) path.
+_NO_DEVICE = "generic (no cap)"
 
 
 class TrackpadPanel(PanelBase):
@@ -55,8 +58,15 @@ class TrackpadPanel(PanelBase):
 
         # Matrix.
         self.name = QLineEdit()
-        # No upper cap on the matrix (large pads are allowed); 2 is the structural
-        # floor for a 2-D XY matrix. 999 is just the spin box's practical ceiling.
+        # Controller profile: "generic" imposes no channel cap; a device (e.g.
+        # iqs550) caps rows (Rx) / cols (Tx) / nodes at the chip's envelope.
+        self.device = QComboBox()
+        self.device.addItem(_NO_DEVICE)
+        self.device.addItems(sorted(DEVICES))
+        self.device.currentTextChanged.connect(self._emit)
+        # No upper cap on the matrix by default (large pads are allowed); 2 is the
+        # structural floor for a 2-D XY matrix. 999 is the spin box's ceiling. A
+        # selected device rejects a matrix beyond its caps at build time.
         self.num_rows = self._spin(2, 999, 1)
         self.num_cols = self._spin(2, 999, 1)
         # Design-from-size: enter an overall outline and the row/column counts are
@@ -70,6 +80,7 @@ class TrackpadPanel(PanelBase):
         matrix_box = QGroupBox("Matrix")
         mf = QFormLayout(matrix_box)
         mf.addRow("Name", self.name)
+        mf.addRow("Controller", self.device)
         mf.addRow(self.size_driven)
         mf.addRow("Target width (mm)", self.panel_width)
         mf.addRow("Target height (mm)", self.panel_height)
@@ -141,6 +152,11 @@ class TrackpadPanel(PanelBase):
         self._set_tooltips(
             {
                 self.name: "Base name for the generated .kicad_mod / .kicad_sym files.",
+                self.device: (
+                    "Touch-controller profile. 'generic' imposes no channel cap; "
+                    "'iqs550' enforces the Azoteq IQS550's 10 Rx × 15 Tx / 150-node "
+                    "envelope and enables the IQS550 config export."
+                ),
                 self.size_driven: (
                     "Design from a target overall size: the row/column counts are "
                     "derived from the pitch and the lattice is trimmed / inset to the "
@@ -231,6 +247,7 @@ class TrackpadPanel(PanelBase):
             mask_shape=shape,
             clip_mode=self.clip_mode.currentText(),
             name=self.name.text() or "CT_Trackpad",
+            device=(None if self.device.currentIndex() == 0 else self.device.currentText()),
         )
         # Size-driven: derive the counts from the target outline and pin the panel;
         # otherwise take the explicit row/column counts.
@@ -262,6 +279,7 @@ class TrackpadPanel(PanelBase):
         self._loading = True
         try:
             self.name.setText(p.name)
+            self.device.setCurrentText(p.device if p.device in DEVICES else _NO_DEVICE)
             # A params set with a panel was designed from an overall size: restore
             # that mode and the target, plus the (derived) counts for when it's off.
             self.size_driven.setChecked(p.panel_width is not None and p.panel_height is not None)

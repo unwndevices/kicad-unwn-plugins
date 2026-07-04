@@ -35,11 +35,13 @@ from PySide6.QtWidgets import (
 
 from .. import engine
 from ..export import dxf
+from ..export.iqs550 import IQS550ConfigError, render_iqs550_config
 from ..geometry import KeypadGeometry, MutualSliderGeometry, TrackpadGeometry, WheelGeometry
 from ..geometry._base import GeometryError
 from ..kicad_plugin import library
 from ..params import (
     DEFAULT_PROFILE,
+    DEVICES,
     FAB_PROFILES,
     KeypadParams,
     MutualSliderParams,
@@ -108,6 +110,8 @@ def _summary(geo: WidgetGeometry) -> str:
             f"pitch {tp.diamond_pitch:.2f} gap {tp.diamond_gap:.2f} mm · "
             f"extent {maxx - minx:.2f} × {maxy - miny:.2f} mm"
         )
+        if tp.device:  # a controller profile is enforcing its channel caps
+            summary += f" · {DEVICES[tp.device].channels_note()}"
         partials = geo.partial_channels()
         if partials:  # a curved mask shrank some edge channels (Azoteq AZD068 §6)
             names = ", ".join(name for name, _ in partials)
@@ -364,6 +368,16 @@ class MainWindow(QMainWindow):
         self._dxf_btn = QPushButton("Export DXF…")
         self._dxf_btn.clicked.connect(self._on_export_dxf)
         bar.addWidget(self._dxf_btn)
+        # Trackpad-only: the IQS550 sensor-config header (Total Rx/Tx + the per-node
+        # Active-channels disable map). Enabled only for a trackpad within the chip's
+        # 10 Rx × 15 Tx envelope (see _set_actions_enabled / _iqs550_ready).
+        self._iqs550_btn = QPushButton("Export IQS550 config…")
+        self._iqs550_btn.setToolTip(
+            "Write the Azoteq IQS550 sensor-config C header: Total Rx/Tx plus the "
+            "per-node Active-channels disable map. Trackpads within 10 Rx × 15 Tx only."
+        )
+        self._iqs550_btn.clicked.connect(self._on_export_iqs550)
+        bar.addWidget(self._iqs550_btn)
         # Only when running as a KiCad plugin: install straight into the open
         # project's library so KiCad's Add Footprint picker can place the part.
         self._install_btn: QPushButton | None = None
@@ -405,8 +419,21 @@ class MainWindow(QMainWindow):
         """Enable/disable the export + install actions together (valid geometry?)."""
         self._export_btn.setEnabled(on)
         self._dxf_btn.setEnabled(on)
+        # The IQS550 config is trackpad-specific and needs a matrix within the chip's
+        # envelope, so it stays disabled for other widgets / oversize pads.
+        self._iqs550_btn.setEnabled(on and self._iqs550_ready())
         if self._install_btn is not None:
             self._install_btn.setEnabled(on)
+
+    def _iqs550_ready(self) -> bool:
+        """True when the current geometry is a trackpad on the IQS550 profile.
+
+        Gated on the explicit ``device == "iqs550"`` selection (the GUI equivalent
+        of typing ``--iqs550-config`` on the CLI). A built IQS550 geometry already
+        fits the envelope — validation would have rejected an over-cap matrix — so
+        no separate size check is needed here.
+        """
+        return isinstance(self._geo, TrackpadGeometry) and self._geo.params.device == "iqs550"
 
     def _update_advice(self, geo: WidgetGeometry) -> None:
         """Refresh the warning banner + info line from fab checks and advisories.
@@ -495,6 +522,42 @@ class MainWindow(QMainWindow):
             return
         self._status.setStyleSheet(_OK_STYLE)
         self._status.setText(f"Exported DXF → {path}")
+
+    def write_iqs550_config(self, path: Path) -> Path:
+        """Write the current trackpad's IQS550 sensor-config header to *path*.
+
+        Returns the path written. Raises :class:`RuntimeError` if the current
+        geometry is not a trackpad, or :class:`IQS550ConfigError` if its matrix
+        exceeds the chip's channel envelope.
+        """
+        if not isinstance(self._geo, TrackpadGeometry):
+            raise RuntimeError("the IQS550 config is only available for a trackpad")
+        Path(path).write_text(render_iqs550_config(self._geo), encoding="utf-8")
+        return Path(path)
+
+    def _on_export_iqs550(self) -> None:
+        if not isinstance(self._geo, TrackpadGeometry):
+            return
+        path, _ = QFileDialog.getSaveFileName(
+            self,
+            "Export IQS550 config",
+            f"{self._geo.params.name}_iqs550.h",
+            "C header (*.h)",
+        )
+        if not path:
+            return
+        try:
+            self.write_iqs550_config(Path(path))
+        except (OSError, RuntimeError, IQS550ConfigError) as exc:
+            self._status.setStyleSheet(_ERR_STYLE)
+            self._status.setText(f"⚠ could not export IQS550 config: {exc}")
+            return
+        disabled = sum(not e for row in self._geo.node_enable_map() for e in row)
+        self._status.setStyleSheet(_OK_STYLE)
+        self._status.setText(
+            f"Exported IQS550 config ({disabled} of {self._geo.params.num_nodes} "
+            f"node(s) disabled) → {path}"
+        )
 
     # -- install into a KiCad project (plugin mode) ------------------------- #
     def install_current(self, target: library.LibraryTarget) -> library.InstallResult:

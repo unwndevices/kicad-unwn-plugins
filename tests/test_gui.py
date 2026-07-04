@@ -438,6 +438,69 @@ def test_trackpad_panel_roundtrips_conform(qapp):
     assert panel.params().clip_mode == "conform"
 
 
+# --------------------------------------------------------------------------- #
+# IQS550 device profile + config export in the GUI
+# --------------------------------------------------------------------------- #
+def test_trackpad_panel_device_round_trips(qapp):
+    from captouch.gui.trackpad_panel import TrackpadPanel
+
+    panel = TrackpadPanel()
+    assert panel.params().device is None  # default: generic (no cap)
+    panel.set_params(TRACKPAD_PRESETS["iqs550"])
+    assert panel.device.currentText() == "iqs550"
+    assert panel.params().device == "iqs550"
+    # Loading a plain generic pad clears the controller back to "no cap".
+    panel.set_params(TrackpadParams(num_rows=4, num_cols=5))
+    assert panel.params().device is None
+
+
+def test_trackpad_panel_device_cap_surfaces_as_error(qapp):
+    from captouch.gui.app import MainWindow
+
+    win = MainWindow()
+    win._on_widget_changed(2)
+    win.panel.device.setCurrentText("iqs550")
+    win.panel.num_rows.setValue(12)  # 12 Rx > the IQS550's 10
+    win._rebuild()
+    assert "exceeds" in win._status.text() and "Rx" in win._status.text()
+
+
+def test_iqs550_config_button_gated_on_device(qapp):
+    from captouch.gui.app import MainWindow
+
+    win = MainWindow()
+    win._on_widget_changed(2)  # Trackpad, generic by default
+    assert not win._iqs550_btn.isEnabled()  # generic pad → no config export
+    win.panel.set_params(TRACKPAD_PRESETS["iqs550"])
+    win._rebuild()
+    assert win._iqs550_btn.isEnabled()  # IQS550 profile → enabled
+    win._on_widget_changed(0)  # Slider → not a trackpad
+    assert not win._iqs550_btn.isEnabled()
+
+
+def test_iqs550_config_export_matches_renderer(qapp, tmp_path):
+    from captouch.export.iqs550 import render_iqs550_config
+    from captouch.gui.app import MainWindow
+
+    win = MainWindow()
+    win._on_widget_changed(2)
+    win.panel.set_params(TRACKPAD_PRESETS["iqs550"])
+    win._rebuild()
+    out = tmp_path / "cfg.h"
+    assert win.write_iqs550_config(out) == out
+    # The written header is exactly the renderer's output for the on-screen geometry.
+    assert out.read_text() == render_iqs550_config(win.preview.geometry_model)
+    assert "iqs550_active_channels[30]" in out.read_text()
+
+
+def test_iqs550_config_export_rejects_non_trackpad(qapp, tmp_path):
+    from captouch.gui.app import MainWindow
+
+    win = MainWindow()  # default widget is the slider
+    with pytest.raises(RuntimeError, match="only available for a trackpad"):
+        win.write_iqs550_config(tmp_path / "cfg.h")
+
+
 @pytest.mark.parametrize("shape,kw", [("rrect", {"corner_radius": 2.0}), ("circle", {})])
 def test_trackpad_masked_outline_renders(qapp, shape, kw):
     from captouch.gui.preview import PreviewView
