@@ -121,8 +121,9 @@ captouch trackpad --mask-shape rrect --corner-radius 4
 ```
 
 Trackpad-specific: `--num-rows` (Rx) × `--num-cols` (Tx), each ≥ 2 with no upper
-cap (3–16 / ≤100 nodes is AT11849's *recommendation* for a touch surface, not a
-hard limit, so large pads are allowed);
+cap by default (3–16 / ≤100 nodes is AT11849's *recommendation* for a touch
+surface, not a hard limit, so large pads are allowed — but see
+[Device profiles](#device-profiles-iqs550) to enforce a specific chip's limit);
 `--diamond-pitch`, `--diamond-gap`; `--bridge-width` (F.Cu neck / B.Cu strap) and
 `--via-drill` / `--via-diameter` for the cross-layer bridge vias. Tx columns are
 bridged on **B.Cu**, so the design needs two copper layers. The connecting necks
@@ -171,6 +172,46 @@ wrote examples/CT_Trackpad.kicad_sym
     - Tx1: 49% area remaining
     - Tx7: 49% area remaining
 ```
+
+#### Device profiles (IQS550)
+
+By default the trackpad is device-agnostic and only checks the AZD068 *layout*
+rules. `--device iqs550` layers the **Azoteq IQS550** (IQS5xx-B000) controller's
+hard channel caps on top: **≤ 10 Rx rows, ≤ 15 Tx columns, ≤ 150 nodes** (the
+widths of the chip's Rx/Tx mapping registers — datasheet §5.1.3; Rx and Tx are
+not interchangeable, which is exactly the tool's fixed `Rx = rows` / `Tx = cols`
+topology). A matrix that exceeds the envelope is rejected before anything is
+written. The `iqs550` **preset** is the ADR-style circular sensor: a 10 × 10
+diamond grid inscribed into a disk with `conform` clipping (rim diamonds cut to
+the curve), i.e. the "inscribed grid, not a masked rectangle" pad.
+
+```sh
+captouch trackpad --preset iqs550                      # 10×10 conform circle, caps applied
+captouch trackpad --device iqs550 --num-rows 8 --num-cols 12 --mask-shape circle --clip-mode conform
+```
+
+**Sensor-config export.** `--iqs550-config FILE` also writes a firmware-ready C
+header carrying the chip's `Total Rx` / `Total Tx` and the **per-node
+Active-channels disable map** — the individual Rx×Tx crossings the circular
+boundary cut below 50 % of their electrode area (datasheet §5.1.2 *Individual
+Channel Disabling*; AZD068 §6). This is finer-grained than the per-line partial
+report above: it disables individual *nodes*, not whole rows/columns.
+
+```sh
+$ captouch trackpad --preset iqs550 --iqs550-config pad_iqs550.h
+wrote pad_iqs550.h
+  IQS550 config: Total Rx=10 Tx=10, 20 of 100 node(s) disabled in the Active-channels map
+  …
+```
+
+The header packs the 30-byte Active-channels block (15 Tx words, high byte first;
+bit *r* = Rx *r*, `1` = enabled — datasheet §8.10.5) as a `uint8_t[30]` array,
+draws the enabled/disabled grid in a comment, and carries two caveats worth
+heeding: **verify the byte/bit order against AZD070** (the Programming &
+Data-Streaming Guide) before flashing, and the bitmap assumes the **identity
+Rx/Tx mapping** — if you route the footprint pads to different chip pins, set the
+mapping registers (`0x063F` / `0x0649`) and permute the bits to match. Per-channel
+ATI then normalises the smaller rim electrodes that remain enabled.
 
 ### Mutual slider
 
