@@ -457,4 +457,20 @@ TRACKPAD_PRESETS: dict[str, TrackpadParams] = {
         diamond_pitch=5.0,
         diamond_gap=0.5,
     ),
+    # Azoteq IQS550 (IQS5xx-B000) circular trackpad: a 10 Rx × 10 Tx diamond grid
+    # (100 of the chip's 150 nodes) inscribed into a disk with the rim diamonds
+    # *cut to the curve* (conform) — the "inscribed grid, not a masked rectangle"
+    # sensor of AZD068 §6 / Fig 6.3. The device profile caps the matrix at the
+    # chip's 10 Rx × 15 Tx envelope, and the conform clip yields the partial rim
+    # channels the IQS550's per-node channel-disabling (§5.1.2) is designed for.
+    "iqs550": TrackpadParams(
+        name="CT_Trackpad_IQS550",
+        num_rows=10,
+        num_cols=10,
+        diamond_pitch=6.0,
+        diamond_gap=0.5,
+        mask_shape="circle",
+        clip_mode="conform",
+        device="iqs550",
+    ),
 }

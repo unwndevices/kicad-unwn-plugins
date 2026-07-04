@@ -86,6 +86,15 @@ def test_presets_validate(key):
     validate_trackpad(TRACKPAD_PRESETS[key])  # must not raise
 
 
+def test_iqs550_preset_is_an_inscribed_conform_circle_within_the_chip_caps():
+    p = TRACKPAD_PRESETS["iqs550"]
+    assert p.device == "iqs550"
+    assert (p.mask_shape, p.clip_mode) == ("circle", "conform")
+    # 10 Rx × 10 Tx = 100 nodes, comfortably inside the 10×15 / 150-node envelope.
+    assert (p.num_rows, p.num_cols, p.num_nodes) == (10, 10, 100)
+    validate_trackpad(p)  # device caps included
+
+
 def test_trackpad_error_is_a_slider_error():
     # so the GUI/CLI `except SliderError` path catches it (like WheelError).
     assert issubclass(TrackpadError, SliderError)

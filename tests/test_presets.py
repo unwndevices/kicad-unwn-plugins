@@ -46,6 +46,7 @@ TRACKPAD_EXPECT = {
     "infineon": dict(rows=5, cols=5, pitch=5.0, gap=0.5),
     "microchip": dict(rows=4, cols=6, pitch=6.0, gap=0.5),
     "compact": dict(rows=3, cols=3, pitch=5.0, gap=0.5),
+    "iqs550": dict(rows=10, cols=10, pitch=6.0, gap=0.5),
 }
 
 
