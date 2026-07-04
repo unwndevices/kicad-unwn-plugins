@@ -346,6 +346,51 @@ def test_conform_area_fraction_bounds():
         assert 0.0 < n.area_fraction <= 1.0
 
 
+# -- per-node enable map (IQS550 §5.1.2 channel disabling) ------------------- #
+def test_rect_mask_all_nodes_full_and_enabled():
+    geo = build_trackpad(TrackpadParams(num_rows=4, num_cols=5))
+    frac = geo.node_area_fraction()
+    assert len(frac) == 4 and all(len(row) == 5 for row in frac)  # R×C, rows=Rx
+    assert all(f == 1.0 for row in frac for f in row)
+    assert all(all(row) for row in geo.node_enable_map())  # every node enabled
+
+
+def test_conform_circle_disables_corner_nodes_keeps_centre():
+    geo = build_trackpad(
+        TrackpadParams(
+            num_rows=6, num_cols=6, diamond_pitch=5.0, mask_shape="circle", clip_mode="conform"
+        )
+    )
+    frac = geo.node_area_fraction()
+    en = geo.node_enable_map()
+    # Corners are (almost) fully cut → disabled; the interior stays full → enabled.
+    # (Interior nodes land at ~0.9998, not exactly 1.0: the conform clip opens every
+    # diamond by min_feature, faceting the area a hair even away from the boundary.)
+    assert frac[0][0] < 0.1 and not en[0][0]
+    assert frac[-1][-1] < 0.1 and not en[-1][-1]
+    assert frac[2][2] > 0.99 and en[2][2] and en[3][3]
+    # The map is ~symmetric for a centred disk on a square matrix.
+    corners = [frac[0][0], frac[0][-1], frac[-1][0], frac[-1][-1]]
+    assert max(corners) - min(corners) < 0.01
+
+
+def test_node_enable_threshold_matches_the_50pct_rule():
+    geo = build_trackpad(
+        TrackpadParams(
+            num_rows=6, num_cols=6, diamond_pitch=5.0, mask_shape="circle", clip_mode="conform"
+        )
+    )
+    frac = geo.node_area_fraction()
+    # Default threshold is AZD068's 0.5: a node is enabled iff it keeps ≥ 50 %.
+    for i, row in enumerate(geo.node_enable_map()):
+        for j, enabled in enumerate(row):
+            assert enabled == (frac[i][j] >= 0.5)
+    # A stricter threshold disables strictly more (monotonic).
+    n_default = sum(not e for row in geo.node_enable_map() for e in row)
+    n_strict = sum(not e for row in geo.node_enable_map(threshold=0.6) for e in row)
+    assert n_strict >= n_default
+
+
 def test_conform_is_a_noop_for_rect_mask():
     # A rect mask clips nothing the lattice doesn't already terminate on, so conform
     # and inscribe coincide and every channel stays a full (1.0) channel.

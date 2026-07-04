@@ -129,6 +129,69 @@ class TrackpadGeometry:
         """
         return [(n.pin_name, n.area_fraction) for n in self.nets if n.area_fraction < threshold]
 
+    def node_area_fraction(self) -> list[list[float]]:
+        """Per-node retained F.Cu area as an ``R×C`` grid (rows = Rx, cols = Tx).
+
+        Element ``[i][j]`` is the fraction of node ``(Rx i+1, Tx j+1)``'s full
+        (rect-mask) F.Cu electrode copper that survives clipping, measured inside
+        the node's ``pitch``-square interpolation cell: ``1.0`` for an uncut
+        interior node (and for *every* node of a rect mask), ``< 1`` for a rim
+        node a curved mask cuts, ``0.0`` for a node fully outside the mask.
+
+        The node cell is the ``pitch``-square centred on the crossing of Rx row
+        *i* and Tx col *j*; the cells exactly tile the lattice box, and each
+        captures ~one Rx plus one Tx diamond of copper — so the ratio is a direct
+        per-node measure of "how much electrode did the boundary remove", the
+        quantity AZD068 §6's ">50 % removed → disable" rule thresholds (whereas
+        :meth:`partial_channels` measures whole Rx/Tx *lines*). This is what the
+        IQS550 per-node channel-disable map (§5.1.2) is built from.
+        """
+        P = self.params.diamond_pitch
+        d = self.params.half_diag
+        bw = self.params.bridge_width
+        R, C = self.params.num_rows, self.params.num_cols
+        x0, y0 = -C * P / 2.0, -R * P / 2.0
+
+        # Full (unclipped) F.Cu lattice: every Rx diamond + neck and every Tx
+        # diamond. The pitch-square cells all lie inside the lattice box, so the
+        # end diamonds' outside-the-box overhang never enters a cell — the cell
+        # integral of this raw union already equals the rect-mask (baseline) area,
+        # matching TrackpadNet.area_fraction's denominator without an extra clip.
+        full_parts: list[Polygon] = []
+        for r in range(R):
+            cy = y0 + (r + 0.5) * P
+            full_parts.extend(_diamond(x0 + c * P, cy, d) for c in range(C + 1))
+            full_parts.extend(
+                box(x0 + c * P + d - bw, cy - bw / 2.0, x0 + (c + 1) * P - d + bw, cy + bw / 2.0)
+                for c in range(C)
+            )
+        for c in range(C):
+            cx = x0 + (c + 0.5) * P
+            full_parts.extend(_diamond(cx, y0 + k * P, d) for k in range(R + 1))
+        full_fcu = unary_union(full_parts)
+        clipped_fcu = unary_union([g for n in self.nets for g in n.fcu])
+
+        grid: list[list[float]] = []
+        for i in range(R):
+            row: list[float] = []
+            for j in range(C):
+                cell = box(x0 + j * P, y0 + i * P, x0 + (j + 1) * P, y0 + (i + 1) * P)
+                full = full_fcu.intersection(cell).area
+                ret = clipped_fcu.intersection(cell).area
+                row.append(round(min(ret / full, 1.0), 4) if full > 0 else 0.0)
+            grid.append(row)
+        return grid
+
+    def node_enable_map(self, threshold: float = DISABLE_AREA_FRACTION) -> list[list[bool]]:
+        """``R×C`` grid of node enable flags (rows = Rx, cols = Tx).
+
+        ``True`` where the node keeps at least *threshold* of its full F.Cu area
+        (enable), ``False`` below it (disable in firmware). See
+        :meth:`node_area_fraction`; the default *threshold* is AZD068 §6's 50 %
+        rule of thumb, the same cut :meth:`partial_channels` applies to lines.
+        """
+        return [[frac >= threshold for frac in row] for row in self.node_area_fraction()]
+
     def symbol_columns(self) -> tuple[list[tuple[str, str]], list[tuple[str, str]]]:
         """``(left, right)`` pin lists: Rx (sense) on the left, Tx (drive) right."""
         left = [(n.pad_number, n.pin_name) for n in self.rx_nets]
