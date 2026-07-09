@@ -1,1 +1,3 @@
 *.kicad_prl
+report.txt
+findings.json
