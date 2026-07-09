@@ -1,31 +1,36 @@
 name: release
 
-# Cut a release on a version tag (vX.Y.Z):
-#   1. build the standalone binaries (reuses build.yml across Linux/macOS/Windows);
-#   2. build the KiCad PCM package + repository index (packaging/build_pcm.py);
-#   3. publish the PCM package and the binaries as GitHub Release assets;
-#   4. deploy the PCM repository index to GitHub Pages, so users can add
-#      https://<owner>.github.io/<repo>/repository.json as a PCM repository URL
-#      and get the plugin plus automatic update notifications.
+# Cut a per-tool release on a per-tool version tag (<tool>-vX.Y.Z, e.g.
+# `captouch-v0.1.0`). The tag prefix selects the tool, so each tool versions
+# independently and one push builds only that tool:
+#   1. resolve the tool + version from the tag;
+#   2. (captouch only) build the standalone binaries (reuses build.yml);
+#   3. build that tool's KiCad PCM package + the shared repository index;
+#   4. publish the tool's Python package to PyPI (trusted publishing, OIDC);
+#   5. publish the PCM package and any binaries as GitHub Release assets;
+#   6. deploy the shared PCM repository index to GitHub Pages, so users can add
+#      https://<owner>.github.io/<repo>/repository.json once and get every tool.
 #
-# One-time setup: enable Pages with "GitHub Actions" as the source
-# (Settings → Pages). The PCM package download_url points at the release asset,
-# so Pages is deployed after the release is published.
-#
-# Because this workflow is tag-triggered, the auto-created `github-pages`
-# environment must also allow tag deployments — its default policy permits only
-# the default branch, which rejects `v*` tags ("Tag … is not allowed to deploy").
-# Add a `v*` tag rule under Settings → Environments → github-pages → Deployment
-# branches and tags (or via the API):
-#   gh api -X POST repos/<owner>/<repo>/environments/github-pages/deployment-branch-policies \
-#     -f name='v*' -f type='tag'
+# One-time setup:
+#  * Pages — enable with "GitHub Actions" as the source (Settings → Pages).
+#    Because this workflow is tag-triggered, the auto-created `github-pages`
+#    environment must allow tag deployments; its default policy permits only the
+#    default branch and rejects tags ("Tag … is not allowed to deploy"). Add a
+#    `*-v*` tag rule under Settings → Environments → github-pages → Deployment
+#    branches and tags (or via the API):
+#      gh api -X POST repos/<owner>/<repo>/environments/github-pages/deployment-branch-policies \
+#        -f name='*-v*' -f type='tag'
+#  * PyPI — register this repo as a Trusted Publisher for each tool's PyPI
+#    project (pypi.org → project → Publishing): workflow `release.yml`,
+#    environment `pypi`. No API token is stored; publishing uses short-lived
+#    OIDC credentials, so it only works once the project's publisher is added.
 on:
   push:
-    tags: ["v*"]
+    tags: ["*-v*"] # <tool>-vX.Y.Z — captouch-v*, core-v*, returnpath-v*
   workflow_dispatch:
     inputs:
       tag:
-        description: "Existing tag to (re)build the release for, e.g. v0.1.0"
+        description: "Existing per-tool tag to (re)build, e.g. captouch-v0.1.0"
         required: true
 
 concurrency:
@@ -36,15 +41,39 @@ permissions:
   contents: read
 
 jobs:
+  setup:
+    name: resolve tool + version
+    runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.ver.outputs.tag }}
+      tool: ${{ steps.ver.outputs.tool }}
+      version: ${{ steps.ver.outputs.version }}
+    steps:
+      - name: Resolve tool + version from the tag
+        id: ver
+        run: |
+          TAG="${{ github.event.inputs.tag || github.ref_name }}"
+          case "$TAG" in
+            *-v*) : ;;
+            *) echo "::error::tag '$TAG' is not <tool>-vX.Y.Z"; exit 1 ;;
+          esac
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "tool=${TAG%%-v*}" >> "$GITHUB_OUTPUT"
+          echo "version=${TAG##*-v}" >> "$GITHUB_OUTPUT"
+
   binaries:
-    # Reuse the standalone-binary matrix; its artifacts become release assets.
+    # Standalone binaries exist for captouch (the GUI tool) only.
+    needs: setup
+    if: needs.setup.outputs.tool == 'captouch'
     uses: ./.github/workflows/build.yml
 
   pcm:
     name: build PCM package
+    needs: setup
+    # Tools that ship a KiCad plugin bundle get a PCM package. captouch today;
+    # returnpath registers here once it ships a plugins/returnpath bundle.
+    if: needs.setup.outputs.tool == 'captouch'
     runs-on: ubuntu-latest
-    outputs:
-      tag: ${{ steps.ver.outputs.tag }}
     steps:
       - uses: actions/checkout@v4
 
@@ -55,18 +84,12 @@ jobs:
       - name: Install builder deps
         run: python -m pip install --upgrade pip jsonschema
 
-      - name: Resolve version + tag
-        id: ver
-        run: |
-          TAG="${{ github.event.inputs.tag || github.ref_name }}"
-          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
-          echo "version=${TAG#v}" >> "$GITHUB_OUTPUT"
-
-      - name: Build PCM package + repository index
+      - name: Build PCM package + shared repository index
         run: |
           python packaging/build_pcm.py \
-            --version "${{ steps.ver.outputs.version }}" \
-            --tag "${{ steps.ver.outputs.tag }}" \
+            --tool "${{ needs.setup.outputs.tool }}" \
+            --version "${{ needs.setup.outputs.version }}" \
+            --tag "${{ needs.setup.outputs.tag }}" \
             --repo "${{ github.repository }}" \
             --outdir dist \
             --timestamp "$(date +%s)"
@@ -75,7 +98,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: pcm-package
-          path: dist/kicad-captouch-pcm-*.zip
+          path: dist/*-pcm-*.zip
           if-no-files-found: error
 
       - name: Upload Pages index
@@ -83,9 +106,53 @@ jobs:
         with:
           path: dist/repo
 
+  pypi:
+    name: publish to PyPI
+    needs: setup
+    runs-on: ubuntu-latest
+    environment: pypi
+    permissions:
+      id-token: write # trusted publishing (OIDC) — no stored token
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Build sdist + wheel for the tool
+        id: build
+        run: |
+          PKG="packages/kicad-${{ needs.setup.outputs.tool }}"
+          if [ ! -f "$PKG/pyproject.toml" ]; then
+            echo "no buildable package at $PKG — skipping PyPI publish"
+            echo "built=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          # Fail loudly on a tag/pyproject version mismatch, rather than silently
+          # publishing a stale wheel (python -m build takes the version from
+          # pyproject.toml, not from the tag).
+          PKG_VERSION="$(python -c 'import tomllib,sys; print(tomllib.load(open(sys.argv[1],"rb"))["project"]["version"])' "$PKG/pyproject.toml")"
+          if [ "$PKG_VERSION" != "${{ needs.setup.outputs.version }}" ]; then
+            echo "::error::tag version ${{ needs.setup.outputs.version }} != $PKG version $PKG_VERSION — bump pyproject.toml"
+            exit 1
+          fi
+          python -m pip install --upgrade pip build
+          python -m build --outdir dist "$PKG"
+          echo "built=true" >> "$GITHUB_OUTPUT"
+
+      - name: Publish to PyPI
+        if: steps.build.outputs.built == 'true'
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          packages-dir: dist
+
   release:
     name: publish release
-    needs: [binaries, pcm]
+    needs: [setup, pcm, binaries]
+    # Only PCM-shipping tools cut a GitHub Release; a tool with no PCM (e.g. core)
+    # publishes to PyPI only. `always()` lets this run when `binaries` was skipped.
+    if: ${{ always() && needs.pcm.result == 'success' }}
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -98,16 +165,18 @@ jobs:
       - name: Collect release assets
         run: |
           mkdir -p release
-          cp artifacts/pcm-package/kicad-captouch-pcm-*.zip release/
-          cp artifacts/captouch-ubuntu-latest/captouch       release/captouch-linux-x86_64
-          cp artifacts/captouch-macos-latest/captouch        release/captouch-macos
-          cp artifacts/captouch-windows-latest/captouch.exe  release/captouch-windows.exe
+          cp artifacts/pcm-package/*-pcm-*.zip release/
+          if [ "${{ needs.binaries.result }}" = "success" ]; then
+            cp artifacts/captouch-ubuntu-latest/captouch       release/captouch-linux-x86_64
+            cp artifacts/captouch-macos-latest/captouch        release/captouch-macos
+            cp artifacts/captouch-windows-latest/captouch.exe  release/captouch-windows.exe
+          fi
           ls -la release
 
       - name: Publish GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ needs.pcm.outputs.tag }}
+          tag_name: ${{ needs.setup.outputs.tag }}
           files: release/*
           generate_release_notes: true
           fail_on_unmatched_files: true
