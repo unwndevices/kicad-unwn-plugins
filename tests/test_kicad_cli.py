@@ -11,8 +11,8 @@ import shutil
 import subprocess
 
 import pytest
-from _board import support_board_text, trackpad_net_map, widget_board_text
 
+from _board import support_board_text, trackpad_net_map, widget_board_text
 from captouch.export import footprint, symbol
 from captouch.geometry import (
     build_keypad,

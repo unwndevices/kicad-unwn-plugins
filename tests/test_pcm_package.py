@@ -33,6 +33,7 @@ import build_pcm  # noqa: E402  (after the sys.path tweak)
 
 VERSION = "0.1.0"
 TAG = "v0.1.0"
+PLUGIN_DIR = REPO_ROOT / "plugins" / "captouch"
 
 
 @pytest.fixture(scope="module")
@@ -43,7 +44,7 @@ def artifacts(tmp_path_factory) -> dict:
         tag=TAG,
         repo_slug="unwndevices/kicad-captouch",
         pages_url="https://unwndevices.github.io/kicad-captouch",
-        plugin_dir=REPO_ROOT / "kicad-plugin",
+        plugin_dir=PLUGIN_DIR,
         outdir=out,
         timestamp=1_700_000_000,
     )
@@ -121,7 +122,7 @@ def test_build_is_deterministic(tmp_path):
             tag=TAG,
             repo_slug="unwndevices/kicad-captouch",
             pages_url="https://unwndevices.github.io/kicad-captouch",
-            plugin_dir=REPO_ROOT / "kicad-plugin",
+            plugin_dir=PLUGIN_DIR,
             outdir=tmp_path / sub,
             timestamp=1_700_000_000,
         )

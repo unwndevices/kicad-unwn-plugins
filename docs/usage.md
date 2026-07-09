@@ -551,12 +551,12 @@ publishes a PCM package, so either grab `kicad-captouch-pcm-<version>.zip` from 
 [Releases page](https://github.com/unwndevices/kicad-captouch/releases) and use
 *Install from File…*, or add the repository URL
 `https://unwndevices.github.io/kicad-captouch/repository.json` for one-click install
-and automatic updates. (You can still copy the [`kicad-plugin/`](../kicad-plugin/)
+and automatic updates. (You can still copy the [`plugins/captouch/`](../plugins/captouch/)
 directory into KiCad's IPC plugins folder by hand instead.) Either way, enable the
 API in *Preferences → Plugins* (*"Enable KiCad API"* — the plugin won't appear if
 it's off) and restart; on first run KiCad builds a virtualenv from the plugin's
 `requirements.txt` and the toolbar button appears once that finishes. See
-[`kicad-plugin/README.md`](../kicad-plugin/README.md) for details and
+[`plugins/captouch/README.md`](../plugins/captouch/README.md) for details and
 troubleshooting.
 
 **Use.**

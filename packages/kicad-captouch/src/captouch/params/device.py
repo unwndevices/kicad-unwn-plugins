@@ -77,9 +77,7 @@ def device_profile(key: str, error_cls: type[Exception]) -> DeviceProfile:
     try:
         return DEVICES[key]
     except KeyError:
-        raise error_cls(
-            f"unknown device {key!r}; known devices: {sorted(DEVICES)}"
-        ) from None
+        raise error_cls(f"unknown device {key!r}; known devices: {sorted(DEVICES)}") from None
 
 
 def validate_device_matrix(

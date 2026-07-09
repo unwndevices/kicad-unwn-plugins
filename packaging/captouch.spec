@@ -20,9 +20,10 @@ import sys
 from PyInstaller.utils.hooks import collect_submodules
 
 # SPECPATH is the directory containing this spec (…/packaging); the repo is its
-# parent and the importable package lives under src/.
+# parent and the importable package lives under its kicad-captouch workspace
+# package (packages/kicad-captouch/src/).
 REPO = os.path.dirname(SPECPATH)
-SRC = os.path.join(REPO, "src")
+SRC = os.path.join(REPO, "packages", "kicad-captouch", "src")
 ENTRY = os.path.join(SPECPATH, "captouch_entry.py")
 
 # Make `captouch` importable while the spec is analysed (needed by

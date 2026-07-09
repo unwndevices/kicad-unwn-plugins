@@ -17,7 +17,7 @@ import pytest
 
 from captouch.kicad_plugin import plugin
 
-BUNDLE = Path(__file__).resolve().parent.parent / "kicad-plugin"
+BUNDLE = Path(__file__).resolve().parent.parent / "plugins" / "captouch"
 MANIFEST = BUNDLE / "plugin.json"
 
 # The scope vocabulary and required keys from KiCad's api.v1 schema (definitions

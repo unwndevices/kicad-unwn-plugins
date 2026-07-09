@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Build the KiCad PCM (Plugin and Content Manager) distribution artifacts.
 
-From the single-source plugin bundle in ``kicad-plugin/`` this produces:
+From the single-source plugin bundle in ``plugins/captouch/`` this produces:
 
 * ``<outdir>/<archive>.zip``         the installable PCM package (``metadata.json`` +
                                      ``plugins/`` + ``resources/icon.png``) — what a
@@ -288,7 +288,7 @@ def main(argv: list[str] | None = None) -> int:
         "--pages-url",
         help="base URL hosting the repository index (default: https://<owner>.github.io/<name>)",
     )
-    parser.add_argument("--plugin-dir", type=Path, default=REPO_ROOT / "kicad-plugin")
+    parser.add_argument("--plugin-dir", type=Path, default=REPO_ROOT / "plugins" / "captouch")
     parser.add_argument("--outdir", type=Path, default=REPO_ROOT / "dist")
     parser.add_argument(
         "--timestamp",
