@@ -109,6 +109,9 @@ def _check(args: argparse.Namespace) -> int:
     except ReportError as exc:
         print(f"error: {exc}", flush=True)
         return 2
+    except OSError as exc:
+        print(f"error: cannot write report: {exc}", flush=True)
+        return 2
 
     return _exit_code(report_findings, args.fail_on)
 

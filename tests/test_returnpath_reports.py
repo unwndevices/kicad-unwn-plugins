@@ -232,3 +232,10 @@ def test_cli_unknown_format_is_usage_error(capsys):
 def test_cli_multiple_formats_to_stdout_is_error(capsys):
     assert main(["check", str(SPLIT_BOARD), "--format", "json,svg"]) == 2
     assert "--out-dir" in capsys.readouterr().out
+
+
+def test_cli_unwritable_output_is_usage_error(capsys):
+    # a bad --output path exits 2 (usage error, §10), not an uncaught traceback.
+    rc = main(["check", str(SPLIT_BOARD), "--format", "json", "--output", "/no/such/dir/r.json"])
+    assert rc == 2
+    assert "cannot write report" in capsys.readouterr().out
