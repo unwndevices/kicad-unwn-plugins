@@ -77,6 +77,26 @@ def _ordered(findings: list[Finding]) -> list[Finding]:
     return sorted(findings, key=lambda f: (-SEVERITY_ORDER.get(f.severity, 0), f.net, f.y, f.x))
 
 
+def ordered_findings(findings: list[Finding]) -> list[Finding]:
+    """The shared display order (errors first, then by net + location), numbered from 1.
+
+    Public so every surface — the SVG/HTML reports here and the in-KiCad overlay/panel
+    (spec §8.3) — numbers the same finding identically.
+    """
+    return _ordered(findings)
+
+
+def severity_color(severity: str, waived: bool = False) -> str:
+    """Crosshair/label colour for *severity* (waived overrides to muted grey), spec §8.3.
+
+    Shared by the SVG crosshairs and the in-KiCad ``User.*`` overlay so a finding is the
+    same colour in every surface.
+    """
+    if waived:
+        return _WAIVED_COLOR
+    return _SEVERITY_COLOR.get(severity, _WAIVED_COLOR)
+
+
 def _finding_lines(f: Finding) -> list[str]:
     icon = _ICON.get(f.severity, "·")
     label = _LABEL.get(f.severity, f.severity.upper())
@@ -191,7 +211,7 @@ def format_svg_report(board_name: str, findings: list[Finding], board: Board) ->
 
 
 def _crosshair(n: int, f: Finding) -> str:
-    color = _WAIVED_COLOR if f.waived else _SEVERITY_COLOR.get(f.severity, _WAIVED_COLOR)
+    color = severity_color(f.severity, f.waived)
     r = 1.4
     dash = ' stroke-dasharray="0.4 0.3"' if f.waived else ""
     fill = "none"
