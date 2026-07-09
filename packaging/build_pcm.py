@@ -92,6 +92,20 @@ class ToolSpec:
     """Minimum KiCad version advertised in the package version record."""
 
 
+def _returnpath_description_full() -> str:
+    return (
+        "Check a KiCad board's current-return paths from inside the PCB editor: "
+        "split-plane crossings, reference-plane edge clearance, and missing return "
+        "vias at layer changes.\n\n"
+        "Run it on the live board (unsaved edits included) and the findings appear as "
+        "native DRC markers (unwaived errors/warnings), a durable User-layer overlay of "
+        "numbered severity-coloured crosshairs (every finding; waived drawn muted), and "
+        "selection — clicking a finding flashes the offending trace. Configuration and "
+        "waivers are read from the project's return-path.toml / return-path.waivers.toml, "
+        "exactly as the CLI, which stays the CI path. Requires KiCad 10+. GPL-3.0."
+    )
+
+
 def _captouch_description_full() -> str:
     return (
         "Generate parametric capacitive-touch interface footprints — sliders, "
@@ -106,9 +120,8 @@ def _captouch_description_full() -> str:
     )
 
 
-# The registry of tools that ship a PCM package. returnpath (a CLI-first tool) and
-# core (no plugin) are reserved on paper and register themselves once they ship —
-# see docs/return-path-checker-v1-spec.md §11.
+# The registry of tools that ship a PCM package. core (no plugin) stays reserved on
+# paper and registers itself once it ships — see docs/return-path-checker-v1-spec.md §11.
 TOOLS: dict[str, ToolSpec] = {
     "captouch": ToolSpec(
         name="captouch",
@@ -122,6 +135,20 @@ TOOLS: dict[str, ToolSpec] = {
         description_full=_captouch_description_full(),
         plugin_subdir="captouch",
         package_name="kicad-captouch",
+    ),
+    "returnpath": ToolSpec(
+        name="returnpath",
+        identifier="com.github.unwndevices.kicad-returnpath",
+        display_name="Return-Path Checker",
+        description=(
+            "Check the open board's current-return paths (split-plane crossings, "
+            "plane-edge clearance, missing return vias) and surface the findings as DRC "
+            "markers, a User-layer overlay, and selection."
+        ),
+        description_full=_returnpath_description_full(),
+        plugin_subdir="returnpath",
+        package_name="kicad-returnpath",
+        kicad_version="10.0",
     ),
 }
 

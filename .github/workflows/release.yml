@@ -70,9 +70,9 @@ jobs:
   pcm:
     name: build PCM package
     needs: setup
-    # Tools that ship a KiCad plugin bundle get a PCM package. captouch today;
-    # returnpath registers here once it ships a plugins/returnpath bundle.
-    if: needs.setup.outputs.tool == 'captouch'
+    # Tools that ship a KiCad plugin bundle get a PCM package (captouch + returnpath);
+    # a tool with no plugins/<tool> bundle (e.g. core) skips this job.
+    if: contains(fromJSON('["captouch", "returnpath"]'), needs.setup.outputs.tool)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
