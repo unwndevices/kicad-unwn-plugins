@@ -1,41 +1,38 @@
-[build-system]
-requires = ["hatchling"]
-build-backend = "hatchling.build"
+# Virtual workspace root for the kicad-plugins monorepo.
+#
+# Each tool is its own package under packages/ with its own pyproject.toml
+# (hatchling build backend); this root only wires the uv workspace and holds the
+# shared lint/type/test configuration. There is deliberately no [project] here —
+# the root ships nothing, it just aggregates the members.
+[tool.uv.workspace]
+members = ["packages/*"]
+# Reserved-on-paper slots that do not yet hold a buildable package. They are
+# excluded so `uv sync` resolves cleanly; drop an entry here the moment its
+# package becomes real (kicad-returnpath is next; kicad-core is carved out of
+# captouch only once returnpath actually imports it — see
+# docs/return-path-checker-v1-spec.md §11).
+exclude = ["packages/kicad-returnpath", "packages/kicad-core"]
 
-[project]
-name = "kicad-captouch"
-version = "0.1.0"
-description = "Parametric generator for capacitive-touch interface footprints (sliders, wheels, XY pads) for KiCad"
-readme = "README.md"
-requires-python = ">=3.10"
-license = "GPL-3.0-or-later"
-license-files = ["LICENSE"]
-authors = [{ name = "Ciro Caputo Viglione" }]
-keywords = ["kicad", "capacitive-touch", "footprint", "pcb", "eda", "slider", "trackpad"]
-dependencies = ["shapely>=2.0"]
+# Resolve the workspace member from the dev/packaging groups below, not PyPI.
+[tool.uv.sources]
+kicad-captouch = { workspace = true }
 
-[project.optional-dependencies]
-gui = ["PySide6>=6.6"]
-dev = ["pytest>=7", "pytest-cov>=4", "ruff>=0.6", "mypy>=1.8", "PySide6>=6.6", "jsonschema>=4"]
-# Standalone-binary build toolchain (PyInstaller bundles the GUI, so pull it in).
-packaging = ["kicad-captouch[gui]", "pyinstaller>=6"]
-
-[project.scripts]
-captouch = "captouch.cli:main"
-
-[project.gui-scripts]
-captouch-gui = "captouch.gui:main"
-
-[tool.hatch.build.targets.wheel]
-packages = ["src/captouch"]
+# `uv sync` installs the default `dev` group, giving captouch editable plus the
+# full lint/type/test toolchain. `packaging` is opt-in (used by the binary build).
+[dependency-groups]
+dev = ["kicad-captouch[dev]"]
+packaging = ["kicad-captouch[packaging]"]
 
 [tool.pytest.ini_options]
-pythonpath = ["src"]
+pythonpath = ["packages/kicad-captouch/src"]
 testpaths = ["tests"]
 
 [tool.ruff]
 line-length = 100
 target-version = "py310"
+# First-party roots so import sorting groups `captouch` separately from
+# third-party packages (the package src moved under packages/ in the workspace).
+src = ["packages/kicad-captouch/src", "tests", "packaging"]
 
 [tool.ruff.lint]
 # Default rules (pyflakes + a subset of pycodestyle) plus import sorting.
@@ -43,7 +40,7 @@ select = ["E4", "E7", "E9", "F", "I"]
 
 [tool.mypy]
 python_version = "3.10"
-files = ["src/captouch"]
+files = ["packages/kicad-captouch/src/captouch"]
 # shapely and PySide6 ship no type stubs; don't fail on their missing imports.
 ignore_missing_imports = true
 warn_redundant_casts = true

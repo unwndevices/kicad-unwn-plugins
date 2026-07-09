@@ -46,7 +46,7 @@ the right plugins folder by hand:
 
 ### Manual: copy the bundle
 
-Alternatively, copy this `kicad-plugin/` directory into KiCad's IPC plugins folder,
+Alternatively, copy this `plugins/captouch/` directory into KiCad's IPC plugins folder,
 renaming it as you like:
 
 - **Linux:** `~/.local/share/kicad/<version>/plugins/` *(or `${KICAD_DOCUMENTS_HOME}/<version>/plugins`)*

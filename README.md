@@ -66,7 +66,7 @@ ready-made package, so you never hunt for the right plugins folder by hand.
   [Releases page](https://github.com/unwndevices/kicad-captouch/releases), then in the PCM choose
   **Install from File…** and pick that zip.
 
-- **Manual copy.** Copy the [`kicad-plugin/`](kicad-plugin/) directory into KiCad's IPC plugins
+- **Manual copy.** Copy the [`plugins/captouch/`](plugins/captouch/) directory into KiCad's IPC plugins
   folder (`~/.local/share/kicad/<ver>/plugins/` on Linux, `~/Documents/KiCad/<ver>/plugins/` on
   macOS, `Documents\KiCad\<ver>\plugins\` on Windows).
 
@@ -77,7 +77,7 @@ In every case:
 1. **Enable the IPC API** — *Preferences → Plugins → "Enable KiCad API"*. The plugin will **not**
    appear if this is off.
 2. **Restart KiCad.** On first run KiCad builds a managed virtualenv and installs the plugin's
-   [`requirements.txt`](kicad-plugin/requirements.txt) (`kicad-python` + `kicad-captouch[gui]`,
+   [`requirements.txt`](plugins/captouch/requirements.txt) (`kicad-python` + `kicad-captouch[gui]`,
    pulled as a zip straight from this repo). This takes a minute; the toolbar button appears once
    it finishes.
 
@@ -87,7 +87,7 @@ PCB-editor toolbar.
 > **No button, nothing under External Plugins?** That almost always means the first-run venv build
 > failed. Update to **KiCad 10.0.1+** (10.0.0 had a bug where IPC plugins didn't appear, and 10.0.1
 > surfaces plugin errors in the status bar), then see the
-> [plugin troubleshooting guide](kicad-plugin/README.md#troubleshooting) for how to read the pip log
+> [plugin troubleshooting guide](plugins/captouch/README.md#troubleshooting) for how to read the pip log
 > and reset the venv.
 
 ### Use it
@@ -101,7 +101,7 @@ PCB-editor toolbar.
    matching symbol from the `captouch` symbol library in the schematic.
 
 Full details and the rationale for the library-install approach are in
-[`kicad-plugin/README.md`](kicad-plugin/README.md) and
+[`plugins/captouch/README.md`](plugins/captouch/README.md) and
 [usage.md](docs/usage.md#kicad-plugin-design-from-inside-kicad).
 
 ---
@@ -182,7 +182,7 @@ Linux/macOS/Windows and uploads the artifacts.
 
 ### KiCad PCM package
 
-`packaging/build_pcm.py` turns the [`kicad-plugin/`](kicad-plugin/) bundle into an installable PCM
+`packaging/build_pcm.py` turns the [`plugins/captouch/`](plugins/captouch/) bundle into an installable PCM
 package plus the repository index (`packages.json` / `repository.json` / `resources.zip`). It
 pins the plugin's `requirements.txt` to the released tag and validates every emitted JSON against
 the vendored PCM v2 schema, building a deterministic (byte-stable) zip:
@@ -206,5 +206,5 @@ package and the binaries as Release assets, and deploys the repository index to 
 - **[docs/plan.md](docs/plan.md)** — architecture, stack, and roadmap.
 - **[docs/capacitive-touch-design-guidelines.md](docs/capacitive-touch-design-guidelines.md)** —
   the design numbers behind the parameters.
-- **[kicad-plugin/README.md](kicad-plugin/README.md)** — the plugin bundle, install options, and
+- **[plugins/captouch/README.md](plugins/captouch/README.md)** — the plugin bundle, install options, and
   troubleshooting.
