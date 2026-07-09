@@ -19,8 +19,8 @@ from pathlib import Path
 from . import __version__
 from .config import ConfigError, build_config
 from .detector import Finding, check_return_path
-from .parser import ParserContractError, parse_board
-from .report import SEVERITY_ORDER, format_text_report
+from .parser import Board, ParserContractError, parse_board
+from .report import FORMAT_EXT, REPORT_FORMATS, SEVERITY_ORDER, render_report
 from .waivers import (
     WAIVERS_FILENAME,
     WaiverError,
@@ -102,8 +102,72 @@ def _check(args: argparse.Namespace) -> int:
         _do_prune(waiver_path, result.stale)
 
     report_findings = result.findings + stale_findings(result.stale)
-    print(format_text_report(board_path.name, report_findings))
+
+    try:
+        formats = _resolve_formats(args.format)
+        _emit_reports(formats, board_path.name, report_findings, board, args)
+    except ReportError as exc:
+        print(f"error: {exc}", flush=True)
+        return 2
+
     return _exit_code(report_findings, args.fail_on)
+
+
+class ReportError(Exception):
+    """A bad ``--format`` / ``--output`` / ``--out-dir`` combination (CLI exit 2)."""
+
+
+def _resolve_formats(raw: list[str] | None) -> list[str]:
+    """Flatten repeatable / comma-separated ``--format`` values into an ordered, deduped list.
+
+    Defaults to ``["text"]`` (§10). Every entry must be a known format (§8.2).
+    """
+    if not raw:
+        return ["text"]
+    formats: list[str] = []
+    for chunk in raw:
+        for name in chunk.split(","):
+            name = name.strip()
+            if not name:
+                continue
+            if name not in REPORT_FORMATS:
+                raise ReportError(
+                    f"unknown format {name!r}; choose from {', '.join(REPORT_FORMATS)}"
+                )
+            if name not in formats:
+                formats.append(name)
+    return formats or ["text"]
+
+
+def _emit_reports(
+    formats: list[str],
+    board_name: str,
+    findings: list[Finding],
+    board: Board,
+    args: argparse.Namespace,
+) -> None:
+    """Write each requested format to ``--out-dir``, ``--output`` (single), or stdout (§10)."""
+    if args.out_dir is not None:
+        out_dir: Path = args.out_dir
+        out_dir.mkdir(parents=True, exist_ok=True)
+        stem = Path(board_name).stem
+        for fmt in formats:
+            path = out_dir / f"{stem}.return-path.{FORMAT_EXT[fmt]}"
+            path.write_text(render_report(fmt, board_name, findings, board), encoding="utf-8")
+            print(f"wrote {fmt} → {path}", flush=True)
+        return
+
+    if len(formats) != 1:
+        raise ReportError(
+            "multiple --format values need --out-dir; use one format for --output/stdout"
+        )
+    fmt = formats[0]
+    body = render_report(fmt, board_name, findings, board)
+    if args.output is not None:
+        args.output.write_text(body, encoding="utf-8")
+        print(f"wrote {fmt} → {args.output}", flush=True)
+    else:
+        print(body)
 
 
 def _do_waive(
@@ -220,6 +284,26 @@ def _add_check_parser(sub: argparse._SubParsersAction) -> None:
         "--prune-waivers",
         action="store_true",
         help="remove stale (unmatched) waiver entries from the sidecar",
+    )
+    p.add_argument(
+        "--format",
+        action="append",
+        metavar="FMT",
+        help="report format(s): text|json|svg|html, comma-separated/repeatable (default: text)",
+    )
+    p.add_argument(
+        "--output",
+        type=Path,
+        default=None,
+        metavar="PATH",
+        help="write a single-format report to a file (else stdout)",
+    )
+    p.add_argument(
+        "--out-dir",
+        type=Path,
+        default=None,
+        metavar="DIR",
+        help="write all requested formats into a directory",
     )
     p.add_argument(
         "--fail-on",
