@@ -1,3 +1,4 @@
 *.kicad_prl
 report.txt
+retest.txt
 findings.json
