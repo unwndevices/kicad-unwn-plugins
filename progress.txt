@@ -1,6 +1,45 @@
 # Ralph progress log — newest entries first.
 # Each iteration appends a dated entry describing the issue worked and what landed.
 
+## 2026-07-09 — #18 Reference-plane identification + four-bucket classification
+
+Turned the skeleton's single-GND-plane guess into real per-trace reference-plane
+identification (spec §4), producing correctly-classified findings across every
+signal net.
+
+- stackup.py (new): parse `(layers …)` into physical copper order (F.Cu → In*.Cu
+  → B.Cu by ordinal) + neighbour lookup — one for a microstrip (outer) layer, two
+  for a stripline (inner) between planes (§4.3).
+- parser.py: `reference_plane_refs` keeps net identity (one `PlaneRef` per
+  (layer, net)) with the `min_pour_area_mm2` floor applied per plane, so a power
+  pour qualifies and a sub-min sliver is dropped on its own merit (§4.2/§5.2);
+  `parse_propagation` reads the declared Track-Propagation table
+  (`(setup (track_propagation (layer … (top_reference …))))`, §4.1). `Board` gains
+  `plane_refs`/`stackup`/`propagation` (defaulted → skeleton view untouched).
+- detector.py: hybrid resolution — declared table wins, else stackup neighbours,
+  else (no stackup) any other-layer plane; coverage always re-checked so a void in
+  a *declared* plane is still caught. Four §4.4 buckets: solid (no finding),
+  split-crossing (error, both-ends predicate), reference-change (info, covering
+  plane's net/layer changes along a fully-referenced segment), edge-overhang/
+  no-reference (warning). `check_split_crossing` kept as an alias.
+- classify_board fixture (4-layer: slotted +3V3 power plane on In2.Cu, GND on
+  F.Cu/B.Cu, sub-min GND sliver on In1.Cu) + inline boards drive all six ACs;
+  15 new tests, skeleton's 19 unchanged.
+
+Post-implementation /code-review (high) confirmed and fixed three items: a
+GeometryCollection difference() result silently dropping a real void
+(now flattened to its LineStrings); a reference-net trace able to self-reference
+when the caller's `reference_nets` diverged from the parse set (now skips any net
+that forms a plane); prep/edge caches re-keyed from object id() to (layer, net),
+dropping a `type: ignore`. Refuted/kept as spec-intended: same-net layer-swap is a
+reference-change per §4.4; the same-plane both-ends predicate is spec-mandated; the
+span-area sliver floor is #17's resolved decision.
+
+Verification: ruff + ruff format + mypy clean (50 files); 34 returnpath tests pass
+(19 skeleton + 15 new); full non-GUI suite 743 green. The 1 red + 88 errored are
+the pre-existing headless PySide6/libGL captouch-GUI failures, unchanged on the
+prior tree. All six ACs met.
+
 ## 2026-07-09 — #17 Walking skeleton: parser, split-crossing detector, text report, CLI
 
 First end-to-end slice of the return-path checker: a real KiCad-10 board in,
