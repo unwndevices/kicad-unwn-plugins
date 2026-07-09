@@ -844,9 +844,7 @@ def _add_trackpad_parser(sub: argparse._SubParsersAction) -> None:
     p.add_argument("--list-presets", action="store_true", help="list presets and exit")
     p.add_argument("--preset", choices=sorted(TRACKPAD_PRESETS), help="start from a vendor preset")
     p.add_argument("--name", help="footprint/symbol base name")
-    p.add_argument(
-        "--num-rows", type=int, help="Rx (sense) rows (>= 2; capped by --device if set)"
-    )
+    p.add_argument("--num-rows", type=int, help="Rx (sense) rows (>= 2; capped by --device if set)")
     p.add_argument(
         "--num-cols", type=int, help="Tx (drive) columns (>= 2; capped by --device if set)"
     )

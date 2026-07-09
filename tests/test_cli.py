@@ -623,8 +623,19 @@ def test_from_params_dxf_flag_writes_dxf(tmp_path):
 # -- IQS550 device profile + config export ---------------------------------- #
 def test_trackpad_device_iqs550_rejects_over_cap(tmp_path, capsys):
     rc = main(
-        ["trackpad", "--out", str(tmp_path), "--name", "T", "--device", "iqs550",
-         "--num-rows", "12", "--num-cols", "8"]
+        [
+            "trackpad",
+            "--out",
+            str(tmp_path),
+            "--name",
+            "T",
+            "--device",
+            "iqs550",
+            "--num-rows",
+            "12",
+            "--num-cols",
+            "8",
+        ]
     )
     assert rc == 2
     assert "exceeds the Azoteq IQS550" in capsys.readouterr().out
@@ -642,8 +653,7 @@ def test_trackpad_iqs550_preset_writes_files_and_reports_device(tmp_path, capsys
 def test_trackpad_iqs550_config_writes_header(tmp_path, capsys):
     header = tmp_path / "cfg.h"
     rc = main(
-        ["trackpad", "--out", str(tmp_path), "--preset", "iqs550",
-         "--iqs550-config", str(header)]
+        ["trackpad", "--out", str(tmp_path), "--preset", "iqs550", "--iqs550-config", str(header)]
     )
     assert rc == 0
     assert f"wrote {header}" in capsys.readouterr().out
@@ -655,10 +665,23 @@ def test_trackpad_iqs550_config_writes_header(tmp_path, capsys):
 def test_trackpad_iqs550_config_rejects_over_cap_before_writing(tmp_path, capsys):
     header = tmp_path / "cfg.h"
     rc = main(
-        ["trackpad", "--out", str(tmp_path), "--name", "T",
-         "--num-rows", "20", "--num-cols", "20",
-         "--mask-shape", "circle", "--clip-mode", "conform",
-         "--iqs550-config", str(header)]
+        [
+            "trackpad",
+            "--out",
+            str(tmp_path),
+            "--name",
+            "T",
+            "--num-rows",
+            "20",
+            "--num-cols",
+            "20",
+            "--mask-shape",
+            "circle",
+            "--clip-mode",
+            "conform",
+            "--iqs550-config",
+            str(header),
+        ]
     )
     assert rc == 2
     assert "does not fit" in capsys.readouterr().out
