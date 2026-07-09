@@ -292,6 +292,12 @@ def format_html_report(board_name: str, findings: list[Finding], board: Board) -
     waived = [f for f in ordered if f.waived]
     summary = _tally(active)
     waived_note = f" · {len(waived)} waived" if waived else ""
+    # Derive the table palette from the single severity-colour source so it can't drift
+    # from the SVG/overlay crosshairs (§8.1/§8.2 share one colour meaning).
+    severity_css = "\n".join(
+        f"  .{sev} {{ color: {color}; }}" for sev, color in _SEVERITY_COLOR.items()
+    )
+    severity_css += f"\n  tr.waived {{ color: {_WAIVED_COLOR}; }}"
     return f"""<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -304,10 +310,7 @@ def format_html_report(board_name: str, findings: list[Finding], board: Board) -
   svg {{ max-width: 100%; height: auto; border: 1px solid #ccc; }}
   table {{ border-collapse: collapse; margin-top: 1rem; width: 100%; font-size: 0.9rem; }}
   th, td {{ text-align: left; padding: 0.3rem 0.6rem; border-bottom: 1px solid #eee; }}
-  .error {{ color: #d23b3b; }}
-  .warning {{ color: #b8730f; }}
-  .info {{ color: #3a80c8; }}
-  tr.waived {{ color: #9aa0a6; }}
+{severity_css}
 </style>
 </head>
 <body>
