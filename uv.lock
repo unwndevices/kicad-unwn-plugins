@@ -311,6 +311,7 @@ source = { editable = "packages/kicad-returnpath" }
 dependencies = [
     { name = "kicad-core" },
     { name = "shapely" },
+    { name = "tomli", marker = "python_full_version < '3.11'" },
 ]
 
 [package.optional-dependencies]
@@ -329,6 +330,7 @@ requires-dist = [
     { name = "pytest-cov", marker = "extra == 'dev'", specifier = ">=4" },
     { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.6" },
     { name = "shapely", specifier = ">=2.0" },
+    { name = "tomli", marker = "python_full_version < '3.11'", specifier = ">=2.0" },
 ]
 provides-extras = ["dev"]
 
