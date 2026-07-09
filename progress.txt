@@ -1,6 +1,58 @@
 # Ralph progress log — newest entries first.
 # Each iteration appends a dated entry describing the issue worked and what landed.
 
+## 2026-07-09 — #20 Plane-edge clearance + return-via-at-layer-change checks
+
+Added the remaining two v1 return-path checks beyond split-crossing (spec §5.1
+#2/#3), completing the §5.1 check set. The #19 config layer had already reserved
+the `edge_clearance_mm` / `return_via_distance_mm` thresholds and the
+`edge_clearance` / `missing_return_via` severities, so this iteration was purely
+the geometry + the two detector passes.
+
+- stackup.py: new `PhysicalLayer` + `Stackup.build` parse the physical stack from
+  `(setup (stackup (layer NAME (thickness …)) …))`; `dielectric_height(a, b)` sums
+  the dielectric sub-layers between two copper foils — the per-trace H the §5.2
+  edge-clearance formula needs. No `(setup (stackup …))` → empty build → H unknown
+  (the 3H term drops out). `_parse_build` reads it; `parse_stackup` threads it.
+- parser.py: new `Via` dataclass + `parse_vias` (net, x/y, copper-layer span) →
+  `Board.vias`. The §3 numeric-net guard already rejects the pre-KiCad-10 form, so
+  vias are name-based here too.
+- detector.py: two passes wired into `check_return_path`.
+  * Plane-edge clearance (`_edge_clearance`): for a trace a single plane *fully
+    covers*, flag it when its distance to that plane's boundary falls below
+    `max(3H, 90 mil, 1×trace width)` (or the scalar `edge_clearance_mm` override =
+    flat floor). Only fully-referenced traces are in scope — a trace leaving the
+    pour is the classifier's edge-overhang, so the checks never double-report. A
+    trace well-referenced by *any* covering plane is clean.
+  * Return-via (`_check_return_vias`): reference-net vias (GND/power) are the
+    stitch candidates; each signal via that changes layers (≥2 distinct `.Cu`
+    layers) with no reference via within `return_via_distance_mm` (default 2.0) is
+    flagged. `signal_nets` now unions trace + via nets so a via-only net is still a
+    victim. Both new classes resolve per-net/netclass thresholds and severities
+    under §6 (edge-clearance = warning, missing-return-via = error) and honour the
+    `ignore` off-switch; new `_message` cases + `_return_via_message`.
+- edge_via_board.kicad_pcb (new fixture: 4-layer stackup with dielectric
+  thicknesses + a GND plane + edge-hugging / comfortably-inside traces + a lonely
+  signal via and a GND-stitched signal via) and test_returnpath_checks.py (13
+  tests) cover all five ACs: the H-summed formula picks the dominant term (3H vs
+  90 mil vs 1×W) and the scalar override replaces it; the hugging trace flags and
+  the inside one doesn't; the lonely via flags and the stitched one doesn't; both
+  checks respect `--set` threshold/severity overrides and `ignore`; and the two
+  checks stay silent on the real split board (no false positives).
+
+Post-implementation /code-review (high) — 7 finder angles + a thorough
+verification pass — found no correctness bugs: the `dielectric_height` slice math,
+empty/MultiPolygon boundary handling, KeyError-free `prep_by_key` lookups, the
+inf-distance path, the distinct-`.Cu`-layer count, and the config severity
+resolution for the two new classes all check out; the `signal_nets` union doesn't
+disturb the trace loop or victim filter.
+
+Verification: ruff + ruff format + mypy clean; 75 returnpath + kicad-core tests
+pass (19 skeleton + 15 classify + 24 config + 13 new + 4 core). Full suite: 780
+passed, 64 skipped; the 1 red + 88 errored are the pre-existing headless
+PySide6/libGL captouch-GUI failures (confirmed identical on the pre-change tree),
+not #20 regressions. All five ACs met.
+
 ## 2026-07-09 — #19 Configuration model (return-path.toml)
 
 Added the project-checked-in layered TOML config (spec §6/§10): thresholds,
