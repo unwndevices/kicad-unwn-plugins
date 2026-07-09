@@ -50,9 +50,7 @@ def drc_marker_findings(findings: list[Finding]) -> list[Finding]:
     ``User.*`` overlay and in the panel. Order matches :func:`overlay_marks` so a marker
     and its overlay crosshair carry the same number.
     """
-    return [
-        f for f in ordered_findings(findings) if f.severity in _DRC_SEVERITIES and not f.waived
-    ]
+    return [f for f in ordered_findings(findings) if f.severity in _DRC_SEVERITIES and not f.waived]
 
 
 @dataclass(frozen=True)
@@ -71,6 +69,7 @@ class OverlayMark:
     y: float
     severity: str
     waived: bool
+    muted: bool
     color: str
     label: str
 
@@ -93,6 +92,7 @@ def overlay_marks(findings: list[Finding]) -> list[OverlayMark]:
                 y=f.y,
                 severity=f.severity,
                 waived=f.waived,
+                muted=f.waived,
                 color=severity_color(f.severity, f.waived),
                 label=f"{n}. {f.cls} ({f.net})" + (" [waived]" if f.waived else ""),
             )
