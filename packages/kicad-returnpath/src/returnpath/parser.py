@@ -49,6 +49,21 @@ class Trace:
 
 
 @dataclass(frozen=True)
+class Via:
+    """One board ``via``: a plated hole at ``(x, y)`` connecting a span of copper layers.
+
+    ``layers`` is the via's start/end copper layers (``(layers "F.Cu" "B.Cu")``). A via on
+    a *signal* net that spans two layers is a layer change the return-via check §5.1#3
+    inspects; a via on a *reference* net is a candidate stitch/return via.
+    """
+
+    net: str
+    x: float
+    y: float
+    layers: tuple[str, ...]
+
+
+@dataclass(frozen=True)
 class PlaneRef:
     """One reference plane, keyed by ``layer`` **and** ``net``.
 
@@ -79,6 +94,7 @@ class Board:
     version: str
     traces: tuple[Trace, ...]
     planes: dict[str, BaseGeometry]
+    vias: tuple[Via, ...] = ()
     plane_refs: tuple[PlaneRef, ...] = ()
     stackup: Stackup = Stackup(order=())
     propagation: dict[str, tuple[str, ...]] = field(default_factory=dict)
@@ -189,6 +205,7 @@ def parse_board(
         version=version,
         traces=tuple(traces),
         planes=planes,
+        vias=parse_vias(root),
         plane_refs=plane_refs,
         stackup=parse_stackup(root),
         propagation=parse_propagation(root),
@@ -262,6 +279,26 @@ def reference_plane_refs(
         if union.area >= min_pour_area_mm2:
             refs.append(PlaneRef(layer=layer, net=net, geom=union))
     return tuple(refs)
+
+
+def parse_vias(board: Node) -> tuple[Via, ...]:
+    """Read every board ``via`` as a :class:`Via` (position + copper-layer span).
+
+    ``(via (at X Y) (size …) (drill …) (layers "F.Cu" "B.Cu") (net "SIG"))`` → one
+    :class:`Via`. A via without a name-based net or an ``(at …)`` is skipped (the §3
+    numeric-net guard has already rejected the pre-KiCad-10 form up front). Layer names are
+    taken verbatim from ``(layers …)``.
+    """
+    vias: list[Via] = []
+    for node in find_all(board, "via"):
+        net = _string_child(node, "net")
+        at = find(node, "at")
+        if net is None or at is None or len(at) < 3:
+            continue
+        layers_node = find(node, "layers")
+        layers = tuple(_tok(x) for x in layers_node[1:]) if layers_node is not None else ()
+        vias.append(Via(net=net, x=_num(at[1]), y=_num(at[2]), layers=layers))
+    return tuple(vias)
 
 
 def parse_propagation(board: Node) -> dict[str, tuple[str, ...]]:

@@ -29,16 +29,17 @@ spans).
 
 from __future__ import annotations
 
+import math
 from collections.abc import Mapping
 from dataclasses import dataclass, replace
 
 from shapely.geometry import Point
 from shapely.geometry.base import BaseGeometry
-from shapely.ops import unary_union
+from shapely.ops import nearest_points, unary_union
 from shapely.prepared import PreparedGeometry, prep
 
 from .config import Config
-from .parser import Board, PlaneRef, Trace
+from .parser import Board, PlaneRef, Trace, Via
 
 # §4.4 / §5 default severities for the classes this detector emits.
 SEVERITY = {
@@ -46,7 +47,12 @@ SEVERITY = {
     "reference-change": "info",
     "edge-overhang": "warning",
     "no-reference": "warning",
+    "edge-clearance": "warning",
+    "missing-return-via": "error",
 }
+
+# The 90 mil floor in the §5.2 edge-clearance formula, in millimetres.
+EDGE_CLEARANCE_MIL_FLOOR_MM = 90 * 0.0254
 
 
 @dataclass(frozen=True)
@@ -207,6 +213,106 @@ def _reference_change(trace: Trace, candidates: list[PlaneRef]) -> Finding:
     )
 
 
+# --------------------------------------------------------------------------- #
+# plane-edge clearance (§5.1 #2 / §5.2)
+# --------------------------------------------------------------------------- #
+def _edge_clearance_threshold(
+    trace: Trace, ref_layer: str, board: Board, override: float | None
+) -> float:
+    """The §5.2 edge-clearance threshold for *trace* against *ref_layer*.
+
+    A scalar ``override`` (config ``edge_clearance_mm``) sets a flat floor; otherwise the
+    per-trace formula ``max(3H, 90 mil, 1×trace width)``, where ``H`` is the dielectric
+    height to the reference plane from the stackup (dropped when the board declares none).
+    """
+    if override is not None:
+        return override
+    terms = [EDGE_CLEARANCE_MIL_FLOOR_MM, trace.width]
+    h = board.stackup.dielectric_height(trace.layer, ref_layer)
+    if h is not None:
+        terms.append(3.0 * h)
+    return max(terms)
+
+
+def _edge_clearance(
+    trace: Trace,
+    candidates: list[PlaneRef],
+    prep_by_key: dict[tuple[str, str], PreparedGeometry],
+    board: Board,
+    override: float | None,
+) -> list[Finding]:
+    """Flag *trace* if it hugs the edge of its reference plane below threshold (§5.1 #2).
+
+    Only fully-referenced traces are in scope — a trace leaving the pour is an
+    edge-overhang the classifier already reports, so this measures distance to the plane
+    boundary only for a candidate that *covers* the whole segment. If any covering plane
+    keeps the trace at or beyond its clearance threshold the return path is sound (no
+    finding); otherwise the least-bad covering plane is reported.
+    """
+    best: tuple[float, float, PlaneRef] | None = None
+    for c in candidates:
+        if not prep_by_key[(c.layer, c.net)].covers(trace.line):
+            continue
+        threshold = _edge_clearance_threshold(trace, c.layer, board, override)
+        dist = trace.line.distance(c.geom.boundary)
+        if dist >= threshold:
+            return []  # a covering plane gives adequate edge clearance
+        if best is None or dist > best[0]:
+            best = (dist, threshold, c)
+    if best is None:
+        return []  # no single plane covers the segment → the classifier owns it
+
+    dist, threshold, c = best
+    on_trace, _ = nearest_points(trace.line, c.geom.boundary)
+    return [
+        _finding(
+            trace,
+            "edge-clearance",
+            c.layer,
+            on_trace.x,
+            on_trace.y,
+            dist,
+            f"{threshold:.2f}",
+        )
+    ]
+
+
+# --------------------------------------------------------------------------- #
+# return via at layer change (§5.1 #3)
+# --------------------------------------------------------------------------- #
+def _return_via_finding(
+    via: Via, reference_pts: list[tuple[float, float]], distance: float, severity: str
+) -> Finding | None:
+    """Flag a layer-changing signal *via* with no stitch via within *distance* (§5.1 #3).
+
+    A via that stays on one copper layer is not a reference transition and is skipped.
+    Otherwise the nearest reference-net via is measured; a gap greater than *distance* (or
+    no reference via at all) means the return current has no local path across the change.
+    """
+    if len({layer for layer in via.layers if layer.endswith(".Cu")}) < 2:
+        return None
+    nearest = min(
+        (math.hypot(via.x - rx, via.y - ry) for rx, ry in reference_pts),
+        default=math.inf,
+    )
+    if nearest <= distance:
+        return None
+    span = via.layers[0] if via.layers else "?"
+    ref_span = via.layers[-1] if via.layers else "?"
+    return Finding(
+        check="missing-return-via",
+        net=via.net,
+        cls="missing-return-via",
+        severity=severity,
+        layer=span,
+        reference_layer=ref_span,
+        x=via.x,
+        y=via.y,
+        span_mm=0.0 if math.isinf(nearest) else nearest,
+        message=_return_via_message(via.net, span, ref_span, nearest, distance),
+    )
+
+
 def _finding(
     trace: Trace, cls: str, reference_layer: str, x: float, y: float, span: float, detail: str = ""
 ) -> Finding:
@@ -236,6 +342,7 @@ def check_return_path(
     min_crossing_span_mm: float = 0.1,
     sliver_ignore_area_mm2: float = 0.0065,
     sampling_tolerance_mm: float = 0.05,
+    return_via_distance_mm: float = 2.0,
 ) -> list[Finding]:
     """Resolve each trace's reference plane(s) and classify it into the four §4.4 buckets.
 
@@ -255,7 +362,9 @@ def check_return_path(
 
     victims: set[str] | None = None
     if config is not None:
-        signal_nets = {t.net for t in board.traces} - plane_nets
+        # Signal nets span both routed traces and vias — a via-only net (a stub changing
+        # layers with no segment on the checked layers) is still a return-via candidate.
+        signal_nets = ({t.net for t in board.traces} | {v.net for v in board.vias}) - plane_nets
         victims = config.victims(signal_nets, net_to_netclass)
         # A board-wide geometric tolerance (the buffer below) uses the defaults layer.
         sampling_tolerance_mm = config.for_net().sampling_tolerance_mm
@@ -275,23 +384,73 @@ def check_return_path(
             continue
 
         span, sliver = min_crossing_span_mm, sliver_ignore_area_mm2
+        edge_override: float | None = None
         resolved = None
         if config is not None:
             resolved = config.for_net(trace.net, net_to_netclass.get(trace.net))
             span, sliver = resolved.min_crossing_span_mm, resolved.sliver_ignore_area_mm2
+            edge_override = resolved.edge_clearance_mm
 
+        candidates = _candidates(trace, board)
         raw = _classify(
             trace,
-            _candidates(trace, board),
+            candidates,
             prep_by_key,
             edge_by_key,
             min_crossing_span_mm=span,
             sliver_ignore_area_mm2=sliver,
         )
+        raw.extend(_edge_clearance(trace, candidates, prep_by_key, board, edge_override))
         if resolved is not None:
             raw = [replace(f, severity=resolved.severity_for(f.cls)) for f in raw]
             raw = [f for f in raw if f.severity != "ignore"]
         findings.extend(raw)
+
+    findings.extend(
+        _check_return_vias(
+            board,
+            victims=victims,
+            skip_nets=skip_nets,
+            config=config,
+            net_to_netclass=net_to_netclass,
+            default_distance=return_via_distance_mm,
+        )
+    )
+    return findings
+
+
+def _check_return_vias(
+    board: Board,
+    *,
+    victims: set[str] | None,
+    skip_nets: set[str],
+    config: Config | None,
+    net_to_netclass: Mapping[str, str],
+    default_distance: float,
+) -> list[Finding]:
+    """Run the return-via-at-layer-change check across every signal via (§5.1 #3).
+
+    Reference-net vias (GND/power) are the stitch candidates; each signal via that changes
+    layers is measured against the nearest one. Per-net ``return_via_distance_mm`` and the
+    ``missing_return_via`` severity are resolved under §6 when a config is present.
+    """
+    reference_pts = [(v.x, v.y) for v in board.vias if v.net in skip_nets]
+    findings: list[Finding] = []
+    for via in board.vias:
+        if via.net in skip_nets:
+            continue
+        if victims is not None and via.net not in victims:
+            continue
+        distance, severity = default_distance, SEVERITY["missing-return-via"]
+        if config is not None:
+            resolved = config.for_net(via.net, net_to_netclass.get(via.net))
+            distance = resolved.return_via_distance_mm
+            severity = resolved.severity_for("missing-return-via")
+        if severity == "ignore":
+            continue
+        finding = _return_via_finding(via, reference_pts, distance, severity)
+        if finding is not None:
+            findings.append(finding)
     return findings
 
 
@@ -300,11 +459,28 @@ def check_return_path(
 check_split_crossing = check_return_path
 
 
+def _return_via_message(net: str, span: str, ref_span: str, nearest: float, distance: float) -> str:
+    where = (
+        "no reference-net via anywhere on the board"
+        if math.isinf(nearest)
+        else f"the nearest stitch via is {nearest:.2f} mm away"
+    )
+    return (
+        f"{net} changes layer ({span}→{ref_span}) with no return/stitch via within "
+        f"{distance:.2f} mm ({where}) — the return current has no local path across the change"
+    )
+
+
 def _message(cls: str, net: str, ref_layer: str, span: float, detail: str) -> str:
     if cls == "split-crossing":
         return (
             f"{net} crosses a {span:.2f} mm void in the {ref_layer} reference plane — "
             f"the return current has no continuous path across the gap"
+        )
+    if cls == "edge-clearance":
+        return (
+            f"{net} runs {span:.2f} mm from the {ref_layer} reference-plane edge — "
+            f"closer than the {detail} mm clearance; the return path is compromised at the edge"
         )
     if cls == "reference-change":
         return (
