@@ -1,6 +1,25 @@
 # Ralph progress log — newest entries first.
 # Each iteration appends a dated entry describing the issue worked and what landed.
 
+## 2026-07-10 — #24 verified complete and closed
+
+The findings-list panel (below) was landed and logged in the prior iteration but
+the GitHub issue was left open — the same #15 situation. Re-verified this iteration
+before closing: all 150 returnpath tests pass (incl. the 16 panel + waiver tests
+for this ticket), ruff + ruff format + mypy clean across all 14 source files, tree
+clean. Re-confirmed each AC against the code — panel_rows lists every severity incl.
+info/waived (AC1); a click drives _select_finding → add_to_selection() (AC2);
+panel_sections sections waived + unwaive() rewrites the sidecar via the shared
+waivers.remove_waivers (AC3); the standalone-window hosting decision is recorded in
+spec §8.3/§12 + README + docstrings (AC4); the headless-parity test shares
+ordered_findings numbering with the CLI/JSON/SVG/HTML reports (AC5). The live Qt
+window + kipy selection round-trip stay the manual in-KiCad acceptance step (no live
+KiCad/PySide6 in CI). Closed #24.
+
+With #24 closed, every execution ticket #15–#24 off the v1 spec is implemented and
+closed; only the #2 map (the umbrella tracker, destination long reached) remains
+open, left for the user to close or extend with the §12 post-v1 signposts.
+
 ## 2026-07-09 — #24 Findings-list panel (standalone window, click-to-select, un-waive)
 
 Built the fourth in-KiCad surface (spec §8.3): the interactive findings-list panel
