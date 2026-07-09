@@ -6,34 +6,39 @@
 # the root ships nothing, it just aggregates the members.
 [tool.uv.workspace]
 members = ["packages/*"]
-# Reserved-on-paper slots that do not yet hold a buildable package. They are
-# excluded so `uv sync` resolves cleanly; drop an entry here the moment its
-# package becomes real (kicad-returnpath is next; kicad-core was carved out of
-# captouch once the return-path checker needed the shared sexpr parser — see
-# docs/return-path-checker-v1-spec.md §11).
-exclude = ["packages/kicad-returnpath"]
 
 # Resolve workspace members from the dev/packaging groups below, not PyPI.
 [tool.uv.sources]
 kicad-captouch = { workspace = true }
+kicad-returnpath = { workspace = true }
 kicad-core = { workspace = true }
 
-# `uv sync` installs the default `dev` group, giving captouch editable plus the
-# full lint/type/test toolchain. `packaging` is opt-in (used by the binary build).
+# `uv sync` installs the default `dev` group, giving captouch + returnpath editable
+# plus the full lint/type/test toolchain. `packaging` is opt-in (binary build).
 [dependency-groups]
-dev = ["kicad-captouch[dev]"]
+dev = ["kicad-captouch[dev]", "kicad-returnpath[dev]"]
 packaging = ["kicad-captouch[packaging]"]
 
 [tool.pytest.ini_options]
-pythonpath = ["packages/kicad-captouch/src", "packages/kicad-core/src"]
+pythonpath = [
+    "packages/kicad-captouch/src",
+    "packages/kicad-returnpath/src",
+    "packages/kicad-core/src",
+]
 testpaths = ["tests"]
 
 [tool.ruff]
 line-length = 100
 target-version = "py310"
-# First-party roots so import sorting groups `captouch`/`kicad_core` separately
-# from third-party packages (the package src lives under packages/ in the workspace).
-src = ["packages/kicad-captouch/src", "packages/kicad-core/src", "tests", "packaging"]
+# First-party roots so import sorting groups `captouch`/`returnpath`/`kicad_core`
+# separately from third-party packages (package src lives under packages/).
+src = [
+    "packages/kicad-captouch/src",
+    "packages/kicad-returnpath/src",
+    "packages/kicad-core/src",
+    "tests",
+    "packaging",
+]
 
 [tool.ruff.lint]
 # Default rules (pyflakes + a subset of pycodestyle) plus import sorting.
@@ -41,15 +46,23 @@ select = ["E4", "E7", "E9", "F", "I"]
 
 [tool.mypy]
 python_version = "3.10"
-files = ["packages/kicad-captouch/src/captouch", "packages/kicad-core/src/kicad_core"]
-# So captouch's `from kicad_core import ...` resolves under mypy without relying
+files = [
+    "packages/kicad-captouch/src/captouch",
+    "packages/kicad-returnpath/src/returnpath",
+    "packages/kicad-core/src/kicad_core",
+]
+# So each tool's `from kicad_core import ...` resolves under mypy without relying
 # on the editable install being present.
-mypy_path = ["packages/kicad-captouch/src", "packages/kicad-core/src"]
+mypy_path = [
+    "packages/kicad-captouch/src",
+    "packages/kicad-returnpath/src",
+    "packages/kicad-core/src",
+]
 # shapely and PySide6 ship no type stubs; don't fail on their missing imports.
 ignore_missing_imports = true
 warn_redundant_casts = true
 warn_unused_ignores = true
 
 [tool.coverage.run]
-source = ["captouch", "kicad_core"]
+source = ["captouch", "returnpath", "kicad_core"]
 branch = true
