@@ -1,6 +1,51 @@
 # Ralph progress log — newest entries first.
 # Each iteration appends a dated entry describing the issue worked and what landed.
 
+## 2026-07-09 — #22 JSON, SVG overlay, and HTML report formats
+
+Productionized the report surface (spec §8.2) beyond text — the three remaining
+formats plus their `--format`/`--output`/`--out-dir` CLI plumbing — all rendered
+from the one canonical finding record (§8.1), so no format diverges in the data
+it shows. Blocker #21 (the severity + waiver state the reports render) was closed.
+
+- report.py: `finding_record(f)` is the single §8.1 serialization —
+  check·net·class·severity·layer·reference_layer·location{x,y}·span_mm·message,
+  plus the content-hash `id` (so CI/JSON can copy it into `--waive`); a waived
+  finding additionally carries `waived: true` + `reason` and is never dropped.
+  `format_json_report` emits a bare list (the CI machine format);
+  `format_svg_report` draws copper islands (the reference planes, even-odd
+  path with holes) + traces (width-stroked polylines) + numbered
+  severity-coloured crosshairs in board millimetres (KiCad and SVG share a
+  y-down frame → coordinates pass through unflipped), waived ones muted
+  grey/hollow/dashed; `format_html_report` is self-contained — the inline SVG
+  overlay + a finding table, waived rows sectioned by a `.waived` class, all
+  text HTML-escaped. `render_report(fmt, …)` dispatches; the ordering
+  (`_ordered`) and numbering are shared so the SVG crosshair numbers line up
+  with the HTML/JSON list.
+- cli.py: `--format` (repeatable / comma-separated, default text; unknown →
+  exit 2), `--output` (a single format to a file), `--out-dir` (every requested
+  format into a directory, named `<stem>.return-path.<ext>`). Multiple formats
+  to stdout/`--output` is a usage error (exit 2). Output routing never touches
+  the unwaived-only exit code.
+- test_returnpath_reports.py (new, 18 tests) covers all five ACs: the JSON
+  canonical-record shape + the waived flag/reason (never-dropped), the SVG
+  islands/traces/numbered-crosshairs + muted-waived + well-formed-XML
+  (rasterizability), self-contained HTML, the shared-record no-divergence
+  invariant, and the `--format`/`--output`/`--out-dir` plumbing.
+
+Post-implementation /code-review (high) — 7 finder angles + verification —
+surfaced one real robustness gap: a bad `--output`/`--out-dir` path let
+`write_text` raise an uncaught `OSError` (a traceback + exit 1 instead of the
+§10 usage-error exit 2). Fixed: `OSError` around report emission now exits 2
+like the other bad-args paths (+1 test). Other candidates (GeometryCollection
+plane handling, empty-input bounds, HTML/SVG escaping) verified already-safe.
+
+Verification: ruff + ruff format + mypy clean (8 source files); 102 returnpath
+tests pass (incl. the 18 new). Full suite: 813 passed, 64 skipped; the 1 red +
+88 errored are the pre-existing headless PySide6/libglib captouch-GUI failures
+(confirmed the red is the `libglib-2.0.so.0` import guard, not a #22
+regression). All five ACs met.
+
 ## 2026-07-09 — #21 Severity model + waiver sidecar (return-path.waivers.toml)
 
 Added the §7 waiver system — the checked-in system of record for accepted
