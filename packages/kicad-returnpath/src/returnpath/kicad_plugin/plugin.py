@@ -27,8 +27,11 @@ import sys
 from pathlib import Path
 from typing import Any
 
+from ..detector import Finding
 from ..engine import CheckResult, check_live_board
+from ..parser import Board
 from ..report import format_text_report
+from ..waivers import discover_waivers
 from .surfaces import (
     crosshair_lines,
     drc_marker_findings,
@@ -139,7 +142,19 @@ def _flash_trace(board: object, result: CheckResult, finding_index: int) -> bool
     ordered = overlay_marks(result.findings)
     if not 0 <= finding_index < len(ordered):
         return False
-    trace = trace_for_finding(result.board, ordered[finding_index].finding)
+    return _select_finding(board, result.board, ordered[finding_index].finding)
+
+
+def _select_finding(board: object, parsed: Board, finding: Finding) -> bool:
+    """Flash/select the trace for a specific *finding* on the live *board* (§8.3).
+
+    The one click→select primitive (``add_to_selection``, the only interaction primitive; §9)
+    shared by the "jump to the worst finding" tail of :func:`run_in_kicad` and the findings-list
+    panel's click-to-navigate (#24): resolve the finding's routed trace, match it to the live
+    kipy track, and select it. Returns ``False`` (a no-op) when the net has no routed copper or
+    the live board exposes no selection API.
+    """
+    trace = trace_for_finding(parsed, finding)
     if trace is None:
         return False
     select = getattr(board, "add_to_selection", None)
@@ -205,7 +220,38 @@ def run_in_kicad() -> int:
         f"\nreturn-path: {markers} DRC marker(s), {overlay} overlay mark(s) drawn"
         + ("; selected the top finding's trace." if flashed else ".")
     )
+    # The interactive findings-list panel (#24): the standalone window listing every finding,
+    # with click-to-select and un-waive. Best-effort — a missing Qt/PySide6 in the plugin venv
+    # must not fail the run that already drew the durable surfaces above.
+    _open_panel(board, result, disk)
     return 0
+
+
+def _open_panel(board: object, result: CheckResult, disk: Path) -> bool:
+    """Open the standalone findings-list panel window for *result* (spec §8.3, #24).
+
+    Wires the panel's click-to-select to the live board's selection primitive and its un-waive
+    to the discovered ``return-path.waivers.toml``. The Qt window (and any live selection) is
+    the manual in-KiCad acceptance step; a missing PySide6 or windowing failure is reported and
+    swallowed so it never breaks the headless-surfaces path. Returns whether the panel opened.
+    """
+    try:
+        from .panel_window import open_findings_panel
+    except Exception as exc:  # noqa: BLE001 — PySide6 absent in the plugin venv, degrade gracefully
+        print(f"note: findings-list panel unavailable ({exc}); surfaces above still apply.")
+        return False
+
+    waiver_path = discover_waivers(disk) or disk.parent / "return-path.waivers.toml"
+    try:
+        open_findings_panel(
+            result,
+            waiver_path,
+            on_select=lambda finding: _select_finding(board, result.board, finding),
+        )
+    except Exception as exc:  # noqa: BLE001 — a Qt/windowing failure must not fail the run
+        print(f"note: findings-list panel could not open ({exc}); surfaces above still apply.")
+        return False
+    return True
 
 
 def _board_name(board: object) -> str:
