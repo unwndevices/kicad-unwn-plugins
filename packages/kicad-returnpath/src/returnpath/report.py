@@ -17,6 +17,7 @@ and location) and numbered from 1 — the numbers on the SVG crosshairs match th
 from __future__ import annotations
 
 import json
+from collections.abc import Callable
 from typing import Any
 
 from shapely.geometry.base import BaseGeometry
@@ -30,11 +31,9 @@ SEVERITY_ORDER = {"ignore": 0, "info": 1, "warning": 2, "error": 3}
 _ICON = {"error": "✗", "warning": "⚠", "info": "ℹ"}
 _LABEL = {"error": "ERROR", "warning": "WARN", "info": "INFO"}
 
-# The report formats the CLI (§10) exposes, in preference order.
-REPORT_FORMATS = ("text", "json", "svg", "html")
-
-# Filename extension per format, for ``--out-dir`` (§10).
-FORMAT_EXT = {"text": "txt", "json": "json", "svg": "svg", "html": "html"}
+# The format registry (extension + renderer per format) lives with :func:`render_report`
+# at the bottom of the module, once every ``format_*`` function is defined; ``REPORT_FORMATS``
+# and ``FORMAT_EXT`` are derived from it there.
 
 # Severity → crosshair colour for the SVG/HTML overlay (waived overrides to grey).
 _SEVERITY_COLOR = {"error": "#d23b3b", "warning": "#e08a1e", "info": "#3a80c8"}
@@ -358,14 +357,28 @@ def _esc(text: str) -> str:
 # --------------------------------------------------------------------------- #
 # dispatch (used by the CLI §10)
 # --------------------------------------------------------------------------- #
+# One registry per format — filename extension (for ``--out-dir``) and renderer — so the
+# format list, the extension map, and the dispatch can't drift apart. Every renderer shares a
+# uniform ``(board_name, findings, board)`` signature; text/JSON ignore the board argument.
+_Renderer = Callable[[str, list[Finding], Board], str]
+_FORMATS: dict[str, tuple[str, _Renderer]] = {
+    "text": ("txt", lambda name, findings, board: format_text_report(name, findings)),
+    "json": ("json", lambda name, findings, board: format_json_report(name, findings)),
+    "svg": ("svg", format_svg_report),
+    "html": ("html", format_html_report),
+}
+
+# The report formats the CLI (§10) exposes, in preference order.
+REPORT_FORMATS = tuple(_FORMATS)
+
+# Filename extension per format, for ``--out-dir`` (§10).
+FORMAT_EXT = {fmt: ext for fmt, (ext, _) in _FORMATS.items()}
+
+
 def render_report(fmt: str, board_name: str, findings: list[Finding], board: Board) -> str:
     """Render *findings* in *fmt* (one of :data:`REPORT_FORMATS`)."""
-    if fmt == "text":
-        return format_text_report(board_name, findings)
-    if fmt == "json":
-        return format_json_report(board_name, findings)
-    if fmt == "svg":
-        return format_svg_report(board_name, findings, board)
-    if fmt == "html":
-        return format_html_report(board_name, findings, board)
-    raise ValueError(f"unknown report format: {fmt}")
+    try:
+        _, renderer = _FORMATS[fmt]
+    except KeyError:
+        raise ValueError(f"unknown report format: {fmt}") from None
+    return renderer(board_name, findings, board)
