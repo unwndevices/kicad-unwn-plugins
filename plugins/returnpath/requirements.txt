@@ -1,0 +1,14 @@
+# Dependencies KiCad installs into the plugin's managed virtualenv.
+#
+# kicad-python (kipy) is the stable IPC client used to reach the running KiCad, read the
+# live board (Board.get_as_string()), and draw the findings back. It is PINNED to 0.7.1:
+# that wheel ships broken kipy.board_rules / kipy.schematic_types modules, which the
+# plugin avoids importing — but a different version could shift the API surface the
+# marker/overlay/selection surfacing relies on (spec §9).
+#
+# The checker itself ships as kicad-returnpath. It is not on PyPI yet, so it is installed
+# straight from the GitHub repository as a plain zip (no git client required). If KiCad
+# ever fails to build the plugin venv, this line is the first thing to check. The PCM
+# build pins this URL to the released tag for reproducible plugin-venv builds.
+kicad-python==0.7.1
+kicad-returnpath @ https://github.com/unwndevices/kicad-unwn-plugins/archive/refs/heads/main.zip

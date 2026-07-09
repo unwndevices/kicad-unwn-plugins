@@ -1,0 +1,22 @@
+{
+  "$schema": "https://go.kicad.org/api/schemas/v1",
+  "identifier": "com.github.unwndevices.kicad-returnpath",
+  "name": "Return-Path Checker",
+  "description": "Check the open board's current-return paths (split-plane crossings, plane-edge clearance, missing return vias) and surface the findings as DRC markers, a User-layer overlay, and selection.",
+  "runtime": {
+    "type": "python",
+    "min_version": "3.10"
+  },
+  "actions": [
+    {
+      "identifier": "check",
+      "name": "Return-Path Check…",
+      "description": "Run the return-path checker on the live board and surface the findings in KiCad.",
+      "scopes": ["pcb"],
+      "entrypoint": "entry.py",
+      "show-button": true,
+      "icons-light": ["icon-light-24.png", "icon-light-48.png"],
+      "icons-dark": ["icon-dark-24.png", "icon-dark-48.png"]
+    }
+  ]
+}
