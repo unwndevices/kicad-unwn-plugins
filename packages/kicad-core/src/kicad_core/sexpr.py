@@ -22,7 +22,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Union
 
-__all__ = ["Sym", "dumps", "loads", "head", "children", "find", "find_all"]
+__all__ = ["Sym", "Node", "dumps", "loads", "head", "children", "find", "find_all"]
 
 INDENT = "\t"
 
