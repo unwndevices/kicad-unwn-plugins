@@ -23,3 +23,6 @@ htmlcov/
 
 # Generated artifacts (regenerate with `captouch-spike`)
 /examples/
+
+# Ralph loop — secrets must never be committed
+/ralph/.env

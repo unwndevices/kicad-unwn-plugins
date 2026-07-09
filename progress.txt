@@ -1,0 +1,2 @@
+# Ralph progress log — newest entries first.
+# Each iteration appends a dated entry describing the issue worked and what landed.
