@@ -1,6 +1,52 @@
 # Ralph progress log — newest entries first.
 # Each iteration appends a dated entry describing the issue worked and what landed.
 
+## 2026-07-09 — #17 Walking skeleton: parser, split-crossing detector, text report, CLI
+
+First end-to-end slice of the return-path checker: a real KiCad-10 board in,
+split-crossing findings + an exit code out. New `packages/kicad-returnpath/`
+package (hatchling, depends on kicad-core + shapely), the second consumer of the
+carved-out sexpr parser.
+
+- parser.py enforces the spec §3 contract: name-based nets everywhere
+  (`(net "GND")`, no numbers, no zone `net_name` child); a single zone spans
+  multiple layers (reference plane unioned *per filled_polygon layer*); islands
+  taken verbatim (antipads baked in). A pre-KiCad-10 board (numeric nets /
+  `net_name` child) is *rejected* (ParserContractError → CLI exit 2), never
+  silently parsed to an empty plane + false "clean" pass — the #13 failure mode.
+- detector.py: the §5.1 split-crossing check. `trace.difference(plane)` → drop
+  spans below `min_crossing_span_mm` (0.1) and below the `sliver_ignore_area_mm2`
+  copper floor (span length × trace width) → §4.4 both-ends-on-plane predicate
+  labels survivors split-crossing (error) vs edge-overhang (warning). Plane
+  prepared + buffered once (the spike's 25x speedup). Reference-plane
+  *identification* proper (stackup adjacency, GND+power, propagation table) is
+  deferred to #18; the skeleton checks each trace against every reference plane
+  on a layer other than its own.
+- report.py: default grouped, severity-iconed text report + error/warning tally.
+- cli.py: `return-path check BOARD [--reference-nets …] [--fail-on …]`; exit
+  codes 0 clean / 1 finding-at-or-above-fail-on / 2 usage-or-parse error.
+- Root pyproject wired the new workspace member (uv sources + dev group, pytest
+  pythonpath, ruff src, mypy files/mypy_path, coverage). kicad-core now exports
+  `Node` (its public node type, now imported by the returnpath parser).
+- tests/test_returnpath.py (19 tests) + two committed fixture boards (a 20260206
+  split board, the legacy numeric-net board that must be rejected) cover all six
+  ACs: reports real split-crossings (not a false empty-plane pass); rejects the
+  legacy board; the both-ends predicate splits split-crossing from edge-overhang;
+  grouped text report with a tally; exit codes 0/1/2.
+
+Post-implementation /code-review (high) caught and fixed: (1) `parse_board`
+hardcoded GND, silently ignoring `--reference-nets` → threaded through; (2) a
+per-island sliver-area filter that contradicted §3 "verbatim" + the prototype →
+removed (kept min_pour_area on the layer union), and applied `sliver_ignore_area`
+at the *span* level instead; (3) `Node` unexported from kicad-core. Refuted
+findings (buffer handles boundary points; span-floor-before-classify is the
+spec order) documented in the review pass.
+
+Verification: ruff + ruff format + mypy clean; 19 returnpath tests pass; full
+non-GUI suite 728 green (the one red is the pre-existing headless PySide6/libglib
+failure, confirmed unrelated). Package builds as a standalone sdist+wheel. All
+six ACs met.
+
 ## 2026-07-09 — #16 Carve out the shared kicad-core package (sexpr parser)
 
 Extracted the S-expression read/emit parser out of captouch into a new lean
