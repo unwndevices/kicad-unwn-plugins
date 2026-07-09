@@ -1,6 +1,50 @@
 # Ralph progress log — newest entries first.
 # Each iteration appends a dated entry describing the issue worked and what landed.
 
+## 2026-07-09 — #19 Configuration model (return-path.toml)
+
+Added the project-checked-in layered TOML config (spec §6/§10): thresholds,
+reference nets, and net selection are now configurable per project, netclass, and
+net, with CLI flags overriding the file for one-off runs.
+
+- config.py (new): `discover_config` walks upward from the board dir for the nearest
+  `return-path.toml` (`--config` wins; absence → built-in defaults, no file
+  required). `Config.for_net` resolves §6.2 most-specific-wins precedence
+  (tool defaults → [defaults] → [netclass.X] → [net."Y"] → CLI overrides) into a
+  `ResolvedNetConfig` (the §5.2 thresholds + the five §6.3 severity classes;
+  `min_pour_area`/`sampling_tolerance` resolve board-wide from defaults/CLI).
+  `Config.victims` implements §6.1 `signal − reference − exclude(net|netclass)
+  + include`. `with_overrides` applies the flags (replace) and `--set KEY=VALUE`
+  (top-precedence layer). Every schema violation — unknown key, bad severity level,
+  non-numeric threshold, malformed `--set` — raises `ConfigError` → CLI exit 2,
+  never a silent default (AC5). `tomllib` with a `tomli` pin for <3.11.
+- parser.py: `parse_net_classes` reads `(net_class "NAME" (add_net "X"))` blocks
+  into `Board.net_classes` (feeds exclude-by-netclass; boards keeping membership in
+  the .kicad_pro yield {} and net-name selection still works). `parse_board` gains a
+  keyword-only, config-overridable `min_pour_area_mm2` (default 1.0 → byte-identical).
+- detector.py: `check_return_path` gains optional `config`/`net_to_netclass` — it
+  filters to the victim set, resolves per-net `min_crossing_span_mm`/
+  `sliver_ignore_area_mm2`, remaps each finding's severity to the net's level, and
+  drops an `ignore` class (§7.1). Config-less callers keep the skeleton path verbatim.
+- cli.py: added `--config`, `--include`, `--exclude`, `--set`; `--reference-nets`
+  now overrides the config default (GND + power, §6.3) rather than hardcoding GND.
+- test_returnpath_config.py (new, 24 tests) covers all five ACs plus end-to-end
+  severity-downgrade, class-ignore, and exclude-by-netclass; one skeleton CLI test
+  updated for the new GND+power default.
+
+Post-implementation /code-review (high) surfaced candidates; on verification none
+were must-fix: per-net `min_pour_area`/`sampling_tolerance` resolve board-wide by
+design (a plane belongs to a reference net, not a victim net; documented on
+`for_net`); the CLI passes the same `reference_nets` to `parse_board` and the
+detector so planes/skip-set can't diverge; `check_return_path`'s `("GND",)` default
+is intentional back-compat for direct callers (the CLI always supplies it).
+
+Verification: ruff + ruff format + mypy clean (51 files); 58 returnpath tests pass
+(19 skeleton + 15 classify + 24 config). Full suite: 767 passed, 64 skipped; the 1
+red + 88 errored are the pre-existing headless PySide6/libglib captouch-GUI
+failures (confirmed identical on the pre-change tree), not #19 regressions. All five
+ACs met.
+
 ## 2026-07-09 — #18 Reference-plane identification + four-bucket classification
 
 Turned the skeleton's single-GND-plane guess into real per-trace reference-plane
