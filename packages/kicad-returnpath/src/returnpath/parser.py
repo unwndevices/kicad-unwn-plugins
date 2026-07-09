@@ -82,6 +82,7 @@ class Board:
     plane_refs: tuple[PlaneRef, ...] = ()
     stackup: Stackup = Stackup(order=())
     propagation: dict[str, tuple[str, ...]] = field(default_factory=dict)
+    net_classes: dict[str, str] = field(default_factory=dict)
 
 
 # --------------------------------------------------------------------------- #
@@ -148,12 +149,18 @@ def _assert_name_based_schema(board: Node) -> None:
 # --------------------------------------------------------------------------- #
 # public API
 # --------------------------------------------------------------------------- #
-def parse_board(text: str, reference_nets: tuple[str, ...] = ("GND",)) -> Board:
+def parse_board(
+    text: str,
+    reference_nets: tuple[str, ...] = ("GND",),
+    *,
+    min_pour_area_mm2: float = 1.0,
+) -> Board:
     """Parse ``.kicad_pcb`` *text* into a :class:`Board`, enforcing the §3 contract.
 
     ``reference_nets`` selects which nets form the reference planes (default GND);
     it must match the set the detector skips, or a non-GND reference net would build
-    no plane and every trace against it would falsely read clean.
+    no plane and every trace against it would falsely read clean. ``min_pour_area_mm2``
+    is the §5.2 plane-qualification floor (config-overridable via §6).
     """
     root = loads(text)
     if head(root) != "kicad_pcb":
@@ -176,8 +183,8 @@ def parse_board(text: str, reference_nets: tuple[str, ...] = ("GND",)) -> Board:
         line = LineString([(_num(start[1]), _num(start[2])), (_num(end[1]), _num(end[2]))])
         traces.append(Trace(net=net, layer=layer, width=width, line=line))
 
-    planes = reference_planes(root, reference_nets)
-    plane_refs = reference_plane_refs(root, reference_nets)
+    planes = reference_planes(root, reference_nets, min_pour_area_mm2=min_pour_area_mm2)
+    plane_refs = reference_plane_refs(root, reference_nets, min_pour_area_mm2=min_pour_area_mm2)
     return Board(
         version=version,
         traces=tuple(traces),
@@ -185,6 +192,7 @@ def parse_board(text: str, reference_nets: tuple[str, ...] = ("GND",)) -> Board:
         plane_refs=plane_refs,
         stackup=parse_stackup(root),
         propagation=parse_propagation(root),
+        net_classes=parse_net_classes(root),
     )
 
 
@@ -286,3 +294,24 @@ def parse_propagation(board: Node) -> dict[str, tuple[str, ...]]:
         if refs:
             declared[signal_layer] = tuple(refs)
     return declared
+
+
+def parse_net_classes(board: Node) -> dict[str, str]:
+    """Map each net to its netclass name from any ``(net_class …)`` blocks (§6.1).
+
+    KiCad boards that carry netclass membership in the ``.kicad_pcb`` do so as
+    ``(net_class "HighSpeed" … (add_net "DDR_CLK") …)`` — one block per class, listing its
+    member nets. Boards whose membership lives only in the ``.kicad_pro`` project file (the
+    KiCad-10 default) yield ``{}``; netclass-keyed exclusion then simply never fires, and
+    net-name selection still works. The last block naming a net wins.
+    """
+    mapping: dict[str, str] = {}
+    for block in find_all(board, "net_class"):
+        name = block[1] if len(block) > 1 and isinstance(block[1], str) else None
+        if name is None:
+            continue
+        for add in find_all(block, "add_net"):
+            net = add[1] if len(add) > 1 and isinstance(add[1], str) else None
+            if net is not None:
+                mapping[net] = name
+    return mapping
