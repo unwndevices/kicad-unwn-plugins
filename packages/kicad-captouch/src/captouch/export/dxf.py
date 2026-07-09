@@ -1,7 +1,7 @@
 """Export a touch widget's geometry to a DXF drawing for mechanical / CAD handoff.
 
 Direct text emission of an ASCII DXF — the same hand-rolled, dependency-free
-approach the project takes for KiCad S-expressions (see :mod:`captouch.sexpr`):
+approach the project takes for KiCad S-expressions (see :mod:`kicad_core.sexpr`):
 the runtime needs only Shapely, no DXF library. The file targets **R12 / AC1009**,
 the most broadly readable DXF flavour (LibreCAD, FreeCAD, QCAD, Inkscape, and
 AutoCAD all open it), using only ``POLYLINE`` (closed rings) and ``CIRCLE``

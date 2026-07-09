@@ -13,7 +13,7 @@ from captouch.export.footprint import FootprintError, validate_footprint
 from captouch.export.symbol import SymbolError, validate_symbol_lib
 from captouch.geometry import build_slider, build_trackpad
 from captouch.params import SliderParams, TrackpadParams
-from captouch.sexpr import Sym
+from kicad_core.sexpr import Sym
 
 
 def _tri():

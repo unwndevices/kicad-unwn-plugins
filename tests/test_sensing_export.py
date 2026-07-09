@@ -4,10 +4,10 @@ from __future__ import annotations
 
 import pytest
 
-from captouch import sexpr
 from captouch.export import footprint, symbol
 from captouch.geometry import build_slider, build_trackpad, build_wheel
 from captouch.params import SliderParams, TrackpadParams, WheelParams
+from kicad_core import sexpr
 
 
 def _find_property(sym_text: str, name: str):

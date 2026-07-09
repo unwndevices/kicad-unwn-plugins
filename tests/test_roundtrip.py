@@ -5,8 +5,8 @@ These verify our emitter is internally consistent. The authoritative
 
 from __future__ import annotations
 
-from captouch import sexpr
 from captouch.export import footprint, symbol
+from kicad_core import sexpr
 
 SQUARE = [(-3, -3), (3, -3), (3, 3), (-3, 3)]
 

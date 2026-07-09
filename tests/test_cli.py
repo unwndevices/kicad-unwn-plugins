@@ -190,7 +190,7 @@ def test_from_params_dispatches_by_widget(tmp_path):
 
 
 def _zones(text):
-    from captouch import sexpr
+    from kicad_core import sexpr
 
     return len(sexpr.find_all(sexpr.loads(text), "zone"))
 

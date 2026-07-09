@@ -21,7 +21,7 @@ from captouch.params import (
     TrackpadParams,
     WheelParams,
 )
-from captouch.sexpr import find, find_all, head, loads
+from kicad_core.sexpr import find, find_all, head, loads
 
 _ALL_WIDGETS = [
     SliderParams(name="CT_Slider"),

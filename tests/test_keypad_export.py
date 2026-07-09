@@ -6,10 +6,10 @@ from pathlib import Path
 
 import pytest
 
-from captouch import sexpr
 from captouch.export import footprint, symbol
 from captouch.geometry import build_keypad
 from captouch.params import KeypadParams
+from kicad_core import sexpr
 
 GOLDEN = Path(__file__).parent / "golden"
 CONFIGS = [(1, 1), (2, 3), (3, 4)]

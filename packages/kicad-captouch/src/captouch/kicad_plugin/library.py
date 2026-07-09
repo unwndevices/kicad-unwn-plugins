@@ -16,7 +16,7 @@ The destination is configurable (see :class:`LibraryTarget`):
 The footprint ``.pretty`` and the symbol ``.kicad_sym`` are *independent* paths, so
 they may live in two different directories (e.g. footprints in a shared mechanical
 library, symbols in the project). Everything here is pure file I/O over the shared
-:mod:`captouch.engine` output and the :mod:`captouch.sexpr` reader/writer — no
+:mod:`captouch.engine` output and the :mod:`kicad_core.sexpr` reader/writer — no
 KiCad, kipy, or Qt imports — so it is fully testable headlessly.
 """
 
@@ -26,10 +26,11 @@ import sys
 from dataclasses import dataclass
 from pathlib import Path
 
+from kicad_core.sexpr import Sym, children, dumps, find, find_all, head, loads
+
 from .. import engine
 from ..export import symbol
 from ..params import WidgetParams
-from ..sexpr import Sym, children, dumps, find, find_all, head, loads
 
 __all__ = [
     "DEFAULT_NICKNAME",

@@ -6,10 +6,10 @@ from pathlib import Path
 
 import pytest
 
-from captouch import sexpr
 from captouch.export import footprint, symbol
 from captouch.geometry import build_slider
 from captouch.params import SliderParams
+from kicad_core import sexpr
 
 GOLDEN = Path(__file__).parent / "golden"
 SHAPES = ["rectangular", "chevron", "interdigitated"]

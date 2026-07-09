@@ -15,7 +15,10 @@ from __future__ import annotations
 
 from typing import Sequence, Union
 
-from .. import __version__, sexpr
+from kicad_core import sexpr
+from kicad_core.sexpr import Sym
+
+from .. import __version__
 from ..geometry import (
     KeypadGeometry,
     SliderGeometry,
@@ -33,7 +36,6 @@ from ..geometry._base import (
 )
 from ..geometry.zones import NETTIE_DIAMETER, NETTIE_DRILL
 from ..params.support import SupportParams
-from ..sexpr import Sym
 
 #: Any widget geometry the exporter can serialise (duck-typed: ``electrodes``,
 #: ``bounds``, ``params.name``, ``fab_primitives``, ``courtyard_outline``).

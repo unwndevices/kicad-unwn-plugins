@@ -6,10 +6,10 @@ from pathlib import Path
 
 import pytest
 
-from captouch import sexpr
 from captouch.export import footprint, symbol
 from captouch.geometry import build_trackpad
 from captouch.params import TrackpadParams
+from kicad_core import sexpr
 
 GOLDEN = Path(__file__).parent / "golden"
 SIZES = [(3, 3), (4, 5)]

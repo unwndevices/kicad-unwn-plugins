@@ -11,7 +11,10 @@ from __future__ import annotations
 
 from typing import Union
 
-from .. import __version__, sexpr
+from kicad_core import sexpr
+from kicad_core.sexpr import Sym
+
+from .. import __version__
 from ..geometry import (
     KeypadGeometry,
     SliderGeometry,
@@ -20,7 +23,6 @@ from ..geometry import (
     net_tie_number,
 )
 from ..params import recommended_series_r
-from ..sexpr import Sym
 
 WidgetGeometry = Union[SliderGeometry, WheelGeometry, TrackpadGeometry, KeypadGeometry]
 

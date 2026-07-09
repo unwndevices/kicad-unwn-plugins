@@ -6,10 +6,10 @@ from pathlib import Path
 
 import pytest
 
-from captouch import sexpr
 from captouch.export import footprint, symbol
 from captouch.geometry import build_mutual_slider
 from captouch.params import MutualSliderParams
+from kicad_core import sexpr
 
 GOLDEN = Path(__file__).parent / "golden"
 CONFIGS = [(3, 1), (5, 1), (5, 2)]

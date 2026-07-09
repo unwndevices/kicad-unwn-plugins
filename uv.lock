@@ -11,6 +11,7 @@ resolution-markers = [
 [manifest]
 members = [
     "kicad-captouch",
+    "kicad-core",
 ]
 
 [manifest.dependency-groups]
@@ -193,7 +194,7 @@ name = "exceptiongroup"
 version = "1.3.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "typing-extensions", marker = "python_full_version < '3.13'" },
+    { name = "typing-extensions", marker = "python_full_version < '3.11'" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/50/79/66800aadf48771f6b62f7eb014e352e5d06856655206165d775e675a02c9/exceptiongroup-1.3.1.tar.gz", hash = "sha256:8b412432c6055b0b7d14c310000ae93352ed6754f70fa8f7c34141f91c4e3219", size = 30371, upload-time = "2025-11-21T23:01:54.787Z" }
 wheels = [
@@ -242,6 +243,7 @@ name = "kicad-captouch"
 version = "0.1.0"
 source = { editable = "packages/kicad-captouch" }
 dependencies = [
+    { name = "kicad-core" },
     { name = "shapely" },
 ]
 
@@ -266,6 +268,7 @@ packaging = [
 requires-dist = [
     { name = "jsonschema", marker = "extra == 'dev'", specifier = ">=4" },
     { name = "kicad-captouch", extras = ["gui"], marker = "extra == 'packaging'", editable = "packages/kicad-captouch" },
+    { name = "kicad-core", editable = "packages/kicad-core" },
     { name = "mypy", marker = "extra == 'dev'", specifier = ">=1.8" },
     { name = "pyinstaller", marker = "extra == 'packaging'", specifier = ">=6" },
     { name = "pyside6", marker = "extra == 'dev'", specifier = ">=6.6" },
@@ -276,6 +279,26 @@ requires-dist = [
     { name = "shapely", specifier = ">=2.0" },
 ]
 provides-extras = ["gui", "dev", "packaging"]
+
+[[package]]
+name = "kicad-core"
+version = "0.1.0"
+source = { editable = "packages/kicad-core" }
+
+[package.optional-dependencies]
+dev = [
+    { name = "mypy" },
+    { name = "pytest" },
+    { name = "ruff" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "mypy", marker = "extra == 'dev'", specifier = ">=1.8" },
+    { name = "pytest", marker = "extra == 'dev'", specifier = ">=7" },
+    { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.6" },
+]
+provides-extras = ["dev"]
 
 [[package]]
 name = "librt"

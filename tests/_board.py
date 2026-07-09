@@ -8,10 +8,10 @@ it — the "it opens and passes DRC in KiCad" gate from the roadmap.
 
 from __future__ import annotations
 
-from captouch import sexpr
 from captouch.export import footprint
 from captouch.geometry import TrackpadGeometry
-from captouch.sexpr import Sym
+from kicad_core import sexpr
+from kicad_core.sexpr import Sym
 
 # Canonical KiCad layer table (the subset a board must declare).
 _STD_LAYERS = [

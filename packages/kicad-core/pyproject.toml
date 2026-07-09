@@ -1,0 +1,21 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "kicad-core"
+version = "0.1.0"
+description = "Lean shared primitives (KiCad S-expression read/emit) for the kicad-unwn-plugins tools"
+readme = "README.md"
+requires-python = ">=3.10"
+license = "GPL-3.0-or-later"
+license-files = ["LICENSE"]
+authors = [{ name = "Ciro Caputo Viglione" }]
+keywords = ["kicad", "s-expression", "sexpr", "pcb", "eda"]
+dependencies = []
+
+[project.optional-dependencies]
+dev = ["pytest>=7", "ruff>=0.6", "mypy>=1.8"]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/kicad_core"]
