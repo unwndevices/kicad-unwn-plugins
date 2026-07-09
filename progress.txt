@@ -1,2 +1,37 @@
 # Ralph progress log — newest entries first.
 # Each iteration appends a dated entry describing the issue worked and what landed.
+
+## 2026-07-09 — #15 Per-tool PCM/release and repo rename
+
+Generalized packaging + release from single-tool (captouch) to per-tool.
+
+- packaging/build_pcm.py: introduced a `ToolSpec` record + `TOOLS` registry and a
+  `--tool` flag. Everything previously hardcoded to captouch (identifier, display
+  name, descriptions, archive basename, KiCad-version) now lives in the tool's
+  registry entry, so packaging a new monorepo tool is a registry entry, not a code
+  fork. captouch output is byte-identical (asserted via a pinned download_sha256
+  regression test) and its reverse-DNS identifier is unchanged, so existing PCM
+  installs are not orphaned (AC4). `repository.json` is now a repo-wide *shared*
+  index ("unwndevices KiCad plugins"), which each tool release redeploys (AC3).
+- .github/workflows/release.yml: triggers on per-tool tags `<tool>-vX.Y.Z`; a
+  `setup` job resolves tool+version from the tag prefix and the captouch-specific
+  binary/PCM jobs are gated on it, so one push builds only that tool (AC2). Added a
+  `pypi` job that builds `packages/kicad-<tool>` and publishes via trusted
+  publishing (OIDC, no stored token), with a tag-vs-pyproject version guard and a
+  graceful skip for tools that have no buildable package yet. Pages tag policy
+  comment updated to `*-v*`.
+- Tests: byte-identical default build, arbitrary-ToolSpec parameterization,
+  CLI `--tool`, identifier-unchanged. Full suite 858 green; ruff + mypy clean.
+
+Repo rename (kicad-captouch → kicad-unwn-plugins) already landed on main in prior
+commits (014d41b, 12e46e7), so AC1's reference-repointing is pre-existing; GitHub's
+301 redirect of the old URL is operational.
+
+DEFERRED (operational, un-performable/un-verifiable by the agent): AC5's *retire
+the GitHub-archive stopgap* has its pipeline in place (the `pypi` job), but
+plugins/captouch/requirements.txt is deliberately NOT yet flipped from the
+`archive/refs/heads/main.zip` install to a PyPI dependency — that flip only becomes
+safe once the tool's PyPI Trusted Publisher is registered and the first
+`kicad-captouch` release is live on PyPI. Flipping now would break the working
+install with no published package to back it. It is the single remaining follow-up,
+to land in the same change that cuts the first PyPI release.
