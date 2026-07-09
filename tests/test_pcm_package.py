@@ -42,8 +42,8 @@ def artifacts(tmp_path_factory) -> dict:
     return build_pcm.build(
         version=VERSION,
         tag=TAG,
-        repo_slug="unwndevices/kicad-captouch",
-        pages_url="https://unwndevices.github.io/kicad-captouch",
+        repo_slug="unwndevices/kicad-unwn-plugins",
+        pages_url="https://unwndevices.github.io/kicad-unwn-plugins",
         plugin_dir=PLUGIN_DIR,
         outdir=out,
         timestamp=1_700_000_000,
@@ -120,8 +120,8 @@ def test_build_is_deterministic(tmp_path):
         res = build_pcm.build(
             version=VERSION,
             tag=TAG,
-            repo_slug="unwndevices/kicad-captouch",
-            pages_url="https://unwndevices.github.io/kicad-captouch",
+            repo_slug="unwndevices/kicad-unwn-plugins",
+            pages_url="https://unwndevices.github.io/kicad-unwn-plugins",
             plugin_dir=PLUGIN_DIR,
             outdir=tmp_path / sub,
             timestamp=1_700_000_000,

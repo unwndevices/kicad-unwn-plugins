@@ -283,7 +283,7 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Build KiCad PCM package + repository index.")
     parser.add_argument("--version", required=True, help="package version, e.g. 0.1.0")
     parser.add_argument("--tag", help="git tag for the release (default: v<version>)")
-    parser.add_argument("--repo", default="unwndevices/kicad-captouch", help="owner/name slug")
+    parser.add_argument("--repo", default="unwndevices/kicad-unwn-plugins", help="owner/name slug")
     parser.add_argument(
         "--pages-url",
         help="base URL hosting the repository index (default: https://<owner>.github.io/<name>)",

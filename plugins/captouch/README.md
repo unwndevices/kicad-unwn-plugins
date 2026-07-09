@@ -35,12 +35,12 @@ Each tagged release publishes a ready-made PCM package, so you never have to fin
 the right plugins folder by hand:
 
 - **Install from File** — download `kicad-captouch-pcm-<version>.zip` from the
-  project's [Releases page](https://github.com/unwndevices/kicad-captouch/releases),
+  project's [Releases page](https://github.com/unwndevices/kicad-unwn-plugins/releases),
   then in KiCad's **Plugin and Content Manager** choose **Install from File…** and
   pick that zip.
 - **Add the repository (auto-updates)** — in the Plugin and Content Manager open
   **Manage…**, add the repository URL
-  `https://unwndevices.github.io/kicad-captouch/repository.json`, then install
+  `https://unwndevices.github.io/kicad-unwn-plugins/repository.json`, then install
   *Capacitive-Touch Footprint Generator* from the list. KiCad will offer updates
   when new releases ship.
 

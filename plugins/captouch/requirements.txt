@@ -9,4 +9,4 @@
 # the plugin venv, this line is the first thing to check. Pin the URL to a release
 # tag or commit SHA once one exists, for reproducible plugin-venv builds.
 kicad-python>=0.5
-kicad-captouch[gui] @ https://github.com/unwndevices/kicad-captouch/archive/refs/heads/main.zip
+kicad-captouch[gui] @ https://github.com/unwndevices/kicad-unwn-plugins/archive/refs/heads/main.zip
