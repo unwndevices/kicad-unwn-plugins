@@ -1,8 +1,10 @@
 """Text report (spec §8.2) — the default, human-facing output.
 
-Findings are grouped by severity (errors first), each rendered as one iconed line
-plus its message, and closed with an error/warning/info tally. This is the only
-format in the walking skeleton; JSON/SVG/HTML land in a later issue.
+Active findings are grouped by severity (errors first), each rendered as one iconed line
+(carrying its content-hash id so a reviewer can ``--waive`` it) plus its message, and
+closed with an error/warning/info tally. Waived findings (spec §7.2 / §8.1) are carried in
+a muted ``Waived (N)`` section — never silently dropped. JSON/SVG/HTML land in a later
+issue.
 """
 
 from __future__ import annotations
@@ -17,32 +19,50 @@ _LABEL = {"error": "ERROR", "warning": "WARN", "info": "INFO"}
 
 
 def format_text_report(board_name: str, findings: list[Finding]) -> str:
-    """Render *findings* for *board_name* as a grouped, iconed text report."""
+    """Render *findings* for *board_name* as a grouped, iconed text report.
+
+    Waived findings (``f.waived``) are split into a muted ``Waived (N)`` section and excluded
+    from the active tally, mirroring the exit-code rule that counts unwaived findings only.
+    """
+    active = [f for f in findings if not f.waived]
+    waived = [f for f in findings if f.waived]
+
     lines = [f"return-path check: {board_name}", ""]
 
-    if not findings:
+    if not active:
         lines.append("  ✓ no return-path findings")
-        lines.append("")
-        lines.append("Summary: 0 errors, 0 warnings")
-        return "\n".join(lines)
-
-    ordered = sorted(
-        findings,
-        key=lambda f: (-SEVERITY_ORDER.get(f.severity, 0), f.net, f.y, f.x),
-    )
-    for f in ordered:
-        icon = _ICON.get(f.severity, "·")
-        label = _LABEL.get(f.severity, f.severity.upper())
-        lines.append(
-            f"  {icon} {label:5s} {f.cls:14s} {f.net}  "
-            f"{f.layer}→{f.reference_layer}  "
-            f"({f.x:.2f}, {f.y:.2f}) mm  span {f.span_mm:.2f} mm"
-        )
-        lines.append(f"      {f.message}")
+    else:
+        for f in _ordered(active):
+            lines.extend(_finding_lines(f))
 
     lines.append("")
-    lines.append(f"Summary: {_tally(findings)}")
+    lines.append(f"Summary: {_tally(active)}")
+
+    if waived:
+        lines.append("")
+        lines.append(f"Waived ({len(waived)}):")
+        for f in _ordered(waived):
+            lines.append(
+                f"  · {f.id}  {f.cls:14s} {f.net}  ({f.x:.2f}, {f.y:.2f}) mm"
+                + (f"  — {f.waiver_reason}" if f.waiver_reason else "")
+            )
+
     return "\n".join(lines)
+
+
+def _ordered(findings: list[Finding]) -> list[Finding]:
+    return sorted(findings, key=lambda f: (-SEVERITY_ORDER.get(f.severity, 0), f.net, f.y, f.x))
+
+
+def _finding_lines(f: Finding) -> list[str]:
+    icon = _ICON.get(f.severity, "·")
+    label = _LABEL.get(f.severity, f.severity.upper())
+    return [
+        f"  {icon} {label:5s} {f.cls:14s} {f.net}  "
+        f"{f.layer}→{f.reference_layer}  "
+        f"({f.x:.2f}, {f.y:.2f}) mm  span {f.span_mm:.2f} mm  [{f.id}]",
+        f"      {f.message}",
+    ]
 
 
 def _tally(findings: list[Finding]) -> str:

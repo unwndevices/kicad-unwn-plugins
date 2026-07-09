@@ -1,12 +1,14 @@
 """``return-path`` command-line frontend (spec §10).
 
-Walking-skeleton surface::
+Surface::
 
-    return-path check BOARD.kicad_pcb [--reference-nets NET ...] [--fail-on LEVEL]
+    return-path check BOARD.kicad_pcb [config/waiver/selection/output options]
 
-Exit codes (§10): ``0`` clean, ``1`` a finding at or above ``--fail-on`` (default
-``error``), ``2`` a usage / parse error (bad args, unreadable board, non-KiCad-10
-schema). The richer config / waiver / multi-format surface lands in later issues.
+Config (§6) is discovered/overridden per :mod:`returnpath.config`; the waiver sidecar
+(§7.2) is discovered/managed per :mod:`returnpath.waivers`. Exit codes (§10) are computed
+from **unwaived** findings only: ``0`` clean, ``1`` an unwaived finding at or above
+``--fail-on`` (default ``error``), ``2`` a usage / parse error (bad args, unreadable board,
+non-KiCad-10 schema, invalid config/waivers).
 """
 
 from __future__ import annotations
@@ -16,9 +18,24 @@ from pathlib import Path
 
 from . import __version__
 from .config import ConfigError, build_config
-from .detector import check_return_path
+from .detector import Finding, check_return_path
 from .parser import ParserContractError, parse_board
 from .report import SEVERITY_ORDER, format_text_report
+from .waivers import (
+    WAIVERS_FILENAME,
+    WaiverError,
+    append_waiver,
+    apply_waivers,
+    discover_waivers,
+    dump_waivers,
+    git_author,
+    load_waivers,
+    stale_findings,
+    today_stamp,
+    waiver_for,
+    waiver_from_hash,
+    with_ids,
+)
 
 
 def _check(args: argparse.Namespace) -> int:
@@ -57,21 +74,84 @@ def _check(args: argparse.Namespace) -> int:
         print(f"error: {board_path.name}: could not parse board: {exc}", flush=True)
         return 2
 
-    findings = check_return_path(
-        board,
-        reference_nets=reference_nets,
-        config=config,
-        net_to_netclass=board.net_classes,
+    findings = with_ids(
+        check_return_path(
+            board,
+            reference_nets=reference_nets,
+            config=config,
+            net_to_netclass=board.net_classes,
+        )
     )
-    print(format_text_report(board_path.name, findings))
-    return _exit_code(findings, args.fail_on)
+
+    waiver_path: Path | None
+    try:
+        if args.waive is not None:
+            # --waive resolves (and may create) its own target, so a not-yet-existing
+            # explicit --waivers path is fine here — don't fail discovery before writing.
+            waiver_path = _do_waive(args.waive, args.reason, findings, board_path, args.waivers)
+        else:
+            waiver_path = None if args.no_waivers else discover_waivers(board_path, args.waivers)
+        waivers = load_waivers(waiver_path)
+    except WaiverError as exc:
+        print(f"error: {exc}", flush=True)
+        return 2
+
+    result = apply_waivers(findings, waivers)
+
+    if args.prune_waivers:
+        _do_prune(waiver_path, result.stale)
+
+    report_findings = result.findings + stale_findings(result.stale)
+    print(format_text_report(board_path.name, report_findings))
+    return _exit_code(report_findings, args.fail_on)
 
 
-def _exit_code(findings: list, fail_on: str) -> int:
+def _do_waive(
+    hash_id: str,
+    reason: str | None,
+    findings: list[Finding],
+    board_path: Path,
+    explicit: Path | None,
+) -> Path:
+    """Append a waiver for *hash_id* to the sidecar, echoing a matching finding (§7.2, §10)."""
+    if not reason:
+        raise WaiverError("--waive requires --reason")
+    target = explicit or discover_waivers(board_path) or board_path.parent / WAIVERS_FILENAME
+    author, today = git_author(), today_stamp()
+    match = next((f for f in findings if f.id == hash_id), None)
+    if match is not None:
+        entry = waiver_for(match, reason, author=author, today=today)
+    else:
+        entry = waiver_from_hash(hash_id, reason, author=author, today=today)
+        print(
+            f"note: no finding this run matches {hash_id}; wrote a bare waiver entry",
+            flush=True,
+        )
+    append_waiver(target, entry)
+    print(f"waived {hash_id} → {target.name}", flush=True)
+    return target
+
+
+def _do_prune(waiver_path: Path | None, stale: list) -> None:
+    """Remove stale/expired waivers from the sidecar (only on explicit ``--prune-waivers``)."""
+    if waiver_path is None or not waiver_path.is_file():
+        return
+    stale_ids = {w.id for w in stale}
+    kept = [w for w in load_waivers(waiver_path) if w.id not in stale_ids]
+    waiver_path.write_text(dump_waivers(kept), encoding="utf-8")
+    if stale_ids:
+        print(f"pruned {len(stale_ids)} stale waiver(s) from {waiver_path.name}", flush=True)
+
+
+def _exit_code(findings: list[Finding], fail_on: str) -> int:
+    """Exit code from **unwaived** findings only (§10) — waiving the last error greens the build."""
     if fail_on == "none":
         return 0
     threshold = SEVERITY_ORDER[fail_on]
-    worst = max((SEVERITY_ORDER.get(f.severity, 0) for f in findings), default=0)
+    worst = max(
+        (SEVERITY_ORDER.get(f.severity, 0) for f in findings if not f.waived),
+        default=0,
+    )
     return 1 if worst >= threshold else 0
 
 
@@ -113,10 +193,39 @@ def _add_check_parser(sub: argparse._SubParsersAction) -> None:
         help="ad-hoc threshold/severity override, e.g. min_crossing_span_mm=0.2 (repeatable)",
     )
     p.add_argument(
+        "--waivers",
+        type=Path,
+        default=None,
+        metavar="PATH",
+        help="explicit return-path.waivers.toml (else discovered alongside the config)",
+    )
+    p.add_argument(
+        "--no-waivers",
+        action="store_true",
+        help="ignore the waiver sidecar for this run",
+    )
+    p.add_argument(
+        "--waive",
+        metavar="HASH",
+        default=None,
+        help="append a waiver for the finding with this content hash (needs --reason)",
+    )
+    p.add_argument(
+        "--reason",
+        metavar="TEXT",
+        default=None,
+        help="the review reason recorded with --waive",
+    )
+    p.add_argument(
+        "--prune-waivers",
+        action="store_true",
+        help="remove stale (unmatched) waiver entries from the sidecar",
+    )
+    p.add_argument(
         "--fail-on",
         choices=("error", "warning", "info", "none"),
         default="error",
-        help="exit non-zero when a finding reaches this level (default: error)",
+        help="exit non-zero when an unwaived finding reaches this level (default: error)",
     )
     p.set_defaults(func=_check)
 

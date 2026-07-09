@@ -69,6 +69,12 @@ class Finding:
     y: float
     span_mm: float
     message: str
+    # Populated by the waiver layer (spec §7.2); default-inert so the detector never sets
+    # them. ``id`` is the content hash (§7.2); ``waived`` + ``waiver_reason`` echo an
+    # accepted finding. A waived finding is carried, never dropped (§8.1).
+    id: str = ""
+    waived: bool = False
+    waiver_reason: str = ""
 
 
 # --------------------------------------------------------------------------- #
