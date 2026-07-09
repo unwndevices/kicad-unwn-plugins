@@ -12,10 +12,14 @@ resolution-markers = [
 members = [
     "kicad-captouch",
     "kicad-core",
+    "kicad-returnpath",
 ]
 
 [manifest.dependency-groups]
-dev = [{ name = "kicad-captouch", extras = ["dev"], editable = "packages/kicad-captouch" }]
+dev = [
+    { name = "kicad-captouch", extras = ["dev"], editable = "packages/kicad-captouch" },
+    { name = "kicad-returnpath", extras = ["dev"], editable = "packages/kicad-returnpath" },
+]
 packaging = [{ name = "kicad-captouch", extras = ["packaging"], editable = "packages/kicad-captouch" }]
 
 [[package]]
@@ -297,6 +301,34 @@ requires-dist = [
     { name = "mypy", marker = "extra == 'dev'", specifier = ">=1.8" },
     { name = "pytest", marker = "extra == 'dev'", specifier = ">=7" },
     { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.6" },
+]
+provides-extras = ["dev"]
+
+[[package]]
+name = "kicad-returnpath"
+version = "0.1.0"
+source = { editable = "packages/kicad-returnpath" }
+dependencies = [
+    { name = "kicad-core" },
+    { name = "shapely" },
+]
+
+[package.optional-dependencies]
+dev = [
+    { name = "mypy" },
+    { name = "pytest" },
+    { name = "pytest-cov" },
+    { name = "ruff" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "kicad-core", editable = "packages/kicad-core" },
+    { name = "mypy", marker = "extra == 'dev'", specifier = ">=1.8" },
+    { name = "pytest", marker = "extra == 'dev'", specifier = ">=7" },
+    { name = "pytest-cov", marker = "extra == 'dev'", specifier = ">=4" },
+    { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.6" },
+    { name = "shapely", specifier = ">=2.0" },
 ]
 provides-extras = ["dev"]
 
