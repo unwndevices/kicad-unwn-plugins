@@ -1,6 +1,59 @@
 # Ralph progress log — newest entries first.
 # Each iteration appends a dated entry describing the issue worked and what landed.
 
+## 2026-07-09 — #24 Findings-list panel (standalone window, click-to-select, un-waive)
+
+Built the fourth in-KiCad surface (spec §8.3): the interactive findings-list panel
+that shows *every* finding — info and waived included — and drives navigation, since
+selection is KiCad's only interaction primitive. Blocker #23 (IPC plugin + selection/
+overlay mechanism) was already closed.
+
+- Resolved the §8.3/§12 open hosting risk FIRST (AC4): an IPC plugin is a separate
+  process and KiCad's API gives "no docked UI, no events" — the only in-KiCad surface
+  is a toolbar button (§9, verified against kicad-python 0.7.1 + KiCad 10). A dockable
+  in-app panel is therefore impossible over IPC, so the panel is a STANDALONE plugin
+  window. Recorded in the spec (§8.3 note → resolved, §12 signpost → resolved), the
+  bundle README, and the module docstrings.
+- kicad_plugin/panel.py (new, pure/tested): the row/section/un-waive policy.
+  panel_rows lists every finding numbered in the shared report order (matches the
+  text/JSON/SVG/HTML report list); panel_sections splits (active, waived) so waived is
+  sectioned; unwaive() rewrites return-path.waivers.toml so the finding resurfaces next
+  run.
+- kicad_plugin/panel_window.py (new, manual-acceptance Qt layer): the standalone
+  window rendering the rows (QTreeWidget, two sections), lazy PySide6 so the package
+  stays importable in CI (like the lazy kipy). Click a row → flash its trace; un-waive
+  a selected waived row → rewrite the sidecar.
+- kicad_plugin/plugin.py: extracted _select_finding — the one click→add_to_selection
+  primitive shared by the "jump to the worst finding" tail and the panel's click-to-
+  flash (reuses #23's selection mechanism, AC2); _open_panel wires the panel's
+  on_select to it and its un-waive to the discovered sidecar, best-effort so a missing
+  PySide6 never fails the run that already drew the durable surfaces.
+- test_returnpath_panel.py (new, 16 tests): one group per AC — panel_rows lists every
+  severity incl. info/waived/stale (AC1); panel_sections sections waived and keeps the
+  shared numbering (AC3); unwaive removes the entry + rewrites, no-op for absent id /
+  missing file (AC3); _select_finding flashes the matching live trace (AC2); the
+  standalone decision is recorded in module/spec/README + the window imports without Qt
+  (AC4); the panel reflects the same findings as the headless run and shares
+  ordered_findings numbering (AC5).
+
+Post-implementation /code-review (high) — 3 correctness + 4 cleanup finder angles + a
+verify pass — surfaced three real items, all fixed: (1) open_findings_panel called
+app.exec() on a reused QApplication, nesting a loop on KiCad's own and blocking the PCB
+canvas — now shows the window modeless (kept alive by a module ref) and returns at once
+when KiCad owns the app, driving the loop only standalone; (2) unwaive() and the CLI
+_do_prune duplicated the load→drop→dump→write path → extracted the shared
+waivers.remove_waivers(path, ids) (writes only on change, so a no-op leaves the sidecar
+byte-for-byte untouched), both delegate; (3) a docstring overclaimed that panel numbers
+line up with the overlay (which drops location-less stale waivers) → corrected. Also
+removed a dead module-level __getattr__ factory hook. 3 new remove_waivers tests.
+
+Verification: ruff + ruff format + mypy clean (14 source files); 150 returnpath tests
+pass (16 new panel + 3 new waiver). Full suite: 859 passed, 64 skipped; the 1 red + 88
+errored are the pre-existing headless PySide6/libglib captouch-GUI failures (confirmed
+the red is test_cli's libglib import guard, not a #24 regression). The live Qt window +
+kipy selection round-trip are the manual in-KiCad acceptance step (no live KiCad/PySide6
+in CI). All five ACs met.
+
 ## 2026-07-09 — #23 In-KiCad IPC plugin: live-board run, DRC markers, overlay, selection
 
 Built the thin GUI-only IPC plugin over the CLI core (spec §9): run the checker on
