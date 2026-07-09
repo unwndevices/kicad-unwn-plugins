@@ -440,8 +440,11 @@ exit 0. Waiving the last active `error` greens the build.
 From [#5](https://github.com/unwndevices/kicad-captouch/issues/5) — decided on paper;
 execution follows this map.
 
-- **Repo rename:** `kicad-captouch` → **`kicad-plugins`** (GitHub 301-redirects the old
-  URL; existing clones and the `main.zip` `requirements.txt` URL keep resolving). Per-tool
+- **Repo rename:** `kicad-captouch` → **`kicad-unwn-plugins`** (org-namespaced, so it does
+  not read as *the* official KiCad-plugins collection). GitHub 301-redirects the old repo
+  URL, so existing clones and the `main.zip` `requirements.txt` URL keep resolving — but
+  GitHub **Pages** project sites are *not* redirected, so the PCM repository-index URL moves
+  and the old one 404s (re-run `release.yml` to redeploy Pages under the new name). Per-tool
   package names stay descriptive: `kicad-captouch`, `kicad-returnpath`.
 - **Topology:** a **uv workspace** of packages with a **lean shared `kicad-core`**
   (S-expression read/emit `sexpr.py` + the IPC bridge) and one package per tool depending
@@ -450,7 +453,7 @@ execution follows this map.
   as each package's build backend (per-package `python -m build` / PCM flow unchanged). CI
   migrates `pip install -e ".[dev]"` → `uv sync`.
 - **PCM:** **one PCM package per tool, one shared repository index** on GitHub Pages
-  (`https://unwndevices.github.io/kicad-plugins/repository.json`). Reverse-DNS identifiers
+  (`https://unwndevices.github.io/kicad-unwn-plugins/repository.json`). Reverse-DNS identifiers
   per tool: `com.github.unwndevices.kicad-captouch` (unchanged — installs not orphaned) +
   new `com.github.unwndevices.kicad-returnpath`.
 - **Versioning:** **independent per-tool semver tags** — `core-vX.Y.Z`,
@@ -465,7 +468,7 @@ execution follows this map.
 **Target tree:**
 
 ```
-kicad-plugins/
+kicad-unwn-plugins/
   pyproject.toml            # [tool.uv.workspace] members = ["packages/*"]
   uv.lock
   packages/
