@@ -1,6 +1,69 @@
 # Ralph progress log — newest entries first.
 # Each iteration appends a dated entry describing the issue worked and what landed.
 
+## 2026-07-09 — #23 In-KiCad IPC plugin: live-board run, DRC markers, overlay, selection
+
+Built the thin GUI-only IPC plugin over the CLI core (spec §9): run the checker on
+the live board and surface the findings without leaving KiCad. Blockers #22
+(complete finding set + report record) and #15 (per-tool PCM/release) were both
+already closed.
+
+- engine.py (new): pulled the parse → classify → id-stamp pipeline out of the CLI
+  so the plugin runs the *same* analysis as a headless run. analyze_board is the
+  single classification path the CLI now calls; check_live_board is the plugin's
+  one-call entry (discover config + waiver sidecar from the board's on-disk path,
+  analyze the live get_as_string() text, apply waivers) returning a CheckResult
+  (report set = active + stale, plus the raw pre-waiver findings for #24). CLI
+  refactored onto analyze_board — no behaviour change (76 CLI/report/config/waiver
+  tests unchanged).
+- kicad_plugin/surfaces.py (new, pure/tested): the finding→surface policy —
+  drc_marker_findings (native DRC panel gets unwaived error/warning only; info +
+  waived excluded), overlay_marks (durable User.* record for every *board-located*
+  finding — info + waived kept, waived muted, stale-waiver meta-findings excluded so
+  no origin crosshair), crosshair_lines (mm geometry), trace_for_finding (segment to
+  flash — nearest on the finding's net+layer). Numbering/colour reuse report's
+  ordered_findings + a new severity_color, so the overlay matches the SVG/HTML
+  reports.
+- kicad_plugin/plugin.py (new, kipy layer — manual-acceptance path): connect,
+  get_as_string() → check_live_board, then InjectDrcError markers + a User.1
+  crosshair/label overlay + add_to_selection to flash the top finding's trace. A
+  headless --board-file dispatch runs the identical analysis (proven byte-identical
+  to the CLI findings) without a live KiCad. kicad-python pinned to 0.7.1; the
+  broken kipy.board_rules / kipy.schematic_types imports avoided (§9 gotcha).
+- plugins/returnpath/ (new bundle): plugin.json (api/schemas/v1, pcb-scoped toolbar
+  action, identifier com.github.unwndevices.kicad-returnpath), entry.py shim,
+  requirements.txt (kicad-python==0.7.1 + the kicad-returnpath archive stopgap),
+  make_icons.py + a trace-crossing-a-plane-gap glyph, README.
+- packaging: a returnpath ToolSpec in build_pcm's TOOLS registry (kicad_version
+  10.0) so a returnpath-vX.Y.Z tag builds its PCM package into the shared repo
+  index; the release.yml pcm-job gate opened from captouch-only to {captouch,
+  returnpath}. Real PCM build validates against the v2 schema and pins to the tag.
+- test_returnpath_plugin.py (new, 28 tests): one section per AC — manifest shape +
+  toolbar button + referenced files (AC1); check_live_board == headless CLI ids +
+  run_board_file/exit codes (AC2); DRC-marker filtering unwaived error/warning only
+  (AC3); overlay covers info + waived, numbered, muted, stale-waiver excluded (AC4);
+  trace_for_finding net+layer-nearest with fallbacks (AC5); requirements pin +
+  no broken imports + lazy kipy (AC6).
+
+Post-implementation /code-review (high) — 7 finder angles + verification — found
+three real issues, all fixed: (1) the add_to_selection primitive (§8.3/AC5) was
+defined but never called → wired into run_in_kicad (flash the most-severe finding);
+(2) run_in_kicad conflated a kipy connection failure with an analysis failure →
+connection now fails with IPC guidance, an unparseable live board is reported
+plainly; (3) overlay_marks drew a spurious origin crosshair for location-less
+stale-waiver findings → excluded from the overlay. Also tightened _match_live_track
+from a subset to an equality endpoint match. The CLI-refactor parity, the
+severity_color/ordered_findings extraction (byte-identical), and the PCM/release
+wiring all verified clean.
+
+Verification: ruff + ruff format + mypy clean (12 source files); 142 returnpath +
+pcm tests pass (28 new plugin tests). Full suite: 840 passed, 64 skipped; the 1 red
++ 88 errored are the pre-existing headless PySide6/libGL captouch-GUI failures
+(confirmed identical on the pre-change tree — the red is test_gui/test_cli's libGL
+import guard), not #23 regressions. The live kipy connection + Qt-free marker/
+overlay/selection round-trip are the manual in-KiCad acceptance step (no live KiCad
+in CI). All six ACs met.
+
 ## 2026-07-09 — #22 JSON, SVG overlay, and HTML report formats
 
 Productionized the report surface (spec §8.2) beyond text — the three remaining
