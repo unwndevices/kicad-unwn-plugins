@@ -15,7 +15,7 @@ import argparse
 from pathlib import Path
 
 from . import __version__
-from .detector import check_split_crossing
+from .detector import check_return_path
 from .parser import ParserContractError, parse_board
 from .report import SEVERITY_ORDER, format_text_report
 
@@ -42,7 +42,7 @@ def _check(args: argparse.Namespace) -> int:
         print(f"error: {board_path.name}: could not parse board: {exc}", flush=True)
         return 2
 
-    findings = check_split_crossing(board, reference_nets=reference_nets)
+    findings = check_return_path(board, reference_nets=reference_nets)
     print(format_text_report(board_path.name, findings))
     return _exit_code(findings, args.fail_on)
 
