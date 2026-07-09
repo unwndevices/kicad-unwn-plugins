@@ -1,6 +1,53 @@
 # Ralph progress log — newest entries first.
 # Each iteration appends a dated entry describing the issue worked and what landed.
 
+## 2026-07-09 — #21 Severity model + waiver sidecar (return-path.waivers.toml)
+
+Added the §7 waiver system — the checked-in system of record for accepted
+findings — on top of the #19 per-class severity config. Blockers #19 (config +
+severity block) and #20 (full finding set to waive) were both closed.
+
+- waivers.py (new): finding identity is a SHA-256 content hash of
+  (check, class, net, layer, reference_layer) + the location snapped to a 0.5 mm
+  grid (as integer cell counts, so float noise never shifts the key); severity/
+  span/message are stored for the human echo but NOT hashed. So a cosmetic re-run
+  is stable and a material change — defect moves past a grid cell, net renamed,
+  reference layer swapped — alters the hash and the waiver lapses → re-review
+  (the conservative KIID-rejection point of §7.2). apply_waivers stamps every
+  finding with its id and carries waived ones (waived=True + reason, never
+  dropped, §8.1); a waiver matching no current finding — or an expired one — is
+  stale, surfaced as an info finding, never auto-deleted. Sidecar discovery
+  mirrors config discovery (walk upward from the board; --waivers overrides;
+  --no-waivers ignores). Hand-rolled TOML emit (like the sexpr emitter) for
+  append (--waive) and full rewrite (--prune-waivers); provenance auto-stamps
+  git user.name + the ISO date. Round-trip proven by load↔dump.
+- detector.py: Finding gains three default-inert fields (id/waived/waiver_reason)
+  at the end of the record; the detector never sets them, so its output is
+  unchanged and existing keyword construction is unaffected.
+- report.py: each active finding now carries its [id] (so a reviewer can copy it
+  into --waive); waived findings move to a muted "Waived (N)" section and drop
+  out of the active error/warning tally, mirroring the exit-code rule.
+- cli.py: --waivers PATH / --no-waivers / --waive HASH --reason "…" /
+  --prune-waivers. The exit code counts UNWAIVED findings only, so waiving the
+  last active error greens the build (§10). --waive echoes a matching finding's
+  full descriptive entry (or writes a bare id+reason when nothing matches this
+  run) and can create a not-yet-existing explicit sidecar.
+
+Post-implementation /code-review (high) — 7 finder angles + verification — found
+no cross-file breakage (new Finding fields are appended-with-defaults; every
+construction site is keyword-based). Two edge findings fixed: (1) --waive to a
+not-yet-existing explicit --waivers path used to fail discovery before writing →
+now defers path resolution to the waive step; (2) the append version-guard now
+scans for a top-level `version =` on ANY line, not just before the first
+[[waiver]], so a hand-mangled sidecar can't get a duplicate `version` key (a TOML
+parse error). A refuted candidate (stale info findings counted in the exit gate)
+is spec-correct: stale waivers ARE info, so they only fail under --fail-on info.
+
+Verification: ruff + ruff format + mypy clean (8 source files); 15 new waiver
+tests + 86 returnpath/core tests pass. Full suite: 795 passed, 64 skipped; the
+1 red + 88 errored are the pre-existing headless PySide6/libGL captouch-GUI
+failures (unchanged on the prior tree), not #21 regressions. All five ACs met.
+
 ## 2026-07-09 — #20 Plane-edge clearance + return-via-at-layer-change checks
 
 Added the remaining two v1 return-path checks beyond split-crossing (spec §5.1
