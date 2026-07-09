@@ -1,0 +1,10 @@
+return-path check — sample.kicad_pcb
+────────────────────────────────────────────────────
+  ✗ [split_crossing] net SIG_FAST @ (25.0, 20.0) mm  span 4.0 mm
+      Trace on net 'SIG_FAST' crosses a split in its B.Cu reference plane (4.0 mm unbacked).
+  ✗ [split_crossing] net SIG_FAST @ (25.0, 40.5) mm  span 3.0 mm
+      Trace on net 'SIG_FAST' crosses a split in its B.Cu reference plane (3.0 mm unbacked).
+  ▲ [edge_overhang] net SIG_FAST @ (25.0, -0.5) mm  span 3.0 mm
+      Trace on net 'SIG_FAST' runs 3.0 mm past the edge of its B.Cu reference pour.
+────────────────────────────────────────────────────
+  2 error(s), 1 warning(s)

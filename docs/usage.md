@@ -548,9 +548,9 @@ library and registers it — ready to place with KiCad's own *Add Footprint* /
 
 **Install.** Easiest is KiCad's **Plugin and Content Manager**: every release
 publishes a PCM package, so either grab `kicad-captouch-pcm-<version>.zip` from the
-[Releases page](https://github.com/unwndevices/kicad-captouch/releases) and use
+[Releases page](https://github.com/unwndevices/kicad-unwn-plugins/releases) and use
 *Install from File…*, or add the repository URL
-`https://unwndevices.github.io/kicad-captouch/repository.json` for one-click install
+`https://unwndevices.github.io/kicad-unwn-plugins/repository.json` for one-click install
 and automatic updates. (You can still copy the [`plugins/captouch/`](../plugins/captouch/)
 directory into KiCad's IPC plugins folder by hand instead.) Either way, enable the
 API in *Preferences → Plugins* (*"Enable KiCad API"* — the plugin won't appear if

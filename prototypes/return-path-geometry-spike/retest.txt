@@ -1,0 +1,11 @@
+board:            hydro_ctrl.kicad_pcb  (file version 20260206)
+reference plane:  3232.5 mm^2, 1 island(s), 10447 vertices on In2.Cu (GND)
+B.Cu signal nets: 29, 123 trace segments
+raw uncovered spans: 91  (2 internal-split, 89 terminus-overrun; 12 below 0.1 mm sliver floor)
+return-path DEFECTS (internal-split >= 0.1 mm): 0
+
+timing:
+  parse (own sexpr):        185.530 ms
+  build + prep plane:        18.845 ms
+  crossing check (all):      41.051 ms
+  total:                    257.924 ms

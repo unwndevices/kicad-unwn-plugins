@@ -56,14 +56,14 @@ ready-made package, so you never hunt for the right plugins folder by hand.
   repository URL
 
   ```
-  https://unwndevices.github.io/kicad-captouch/repository.json
+  https://unwndevices.github.io/kicad-unwn-plugins/repository.json
   ```
 
   then install *Capacitive-Touch Footprint Generator* from the list. KiCad offers updates when new
   releases ship.
 
 - **Install from File.** Download `kicad-captouch-pcm-<version>.zip` from the
-  [Releases page](https://github.com/unwndevices/kicad-captouch/releases), then in the PCM choose
+  [Releases page](https://github.com/unwndevices/kicad-unwn-plugins/releases), then in the PCM choose
   **Install from File…** and pick that zip.
 
 - **Manual copy.** Copy the [`plugins/captouch/`](plugins/captouch/) directory into KiCad's IPC plugins
@@ -142,7 +142,7 @@ Then import the pair in KiCad (*Manage Footprint/Symbol Libraries*) — see
 ### Standalone binary (no Python)
 
 Each release ships a one-file executable on the
-[Releases page](https://github.com/unwndevices/kicad-captouch/releases) —
+[Releases page](https://github.com/unwndevices/kicad-unwn-plugins/releases) —
 `captouch-linux-x86_64`, `captouch-macos`, `captouch-windows.exe`. Download it, make it executable,
 and run it exactly like the CLI; `captouch gui` launches the preview app.
 
