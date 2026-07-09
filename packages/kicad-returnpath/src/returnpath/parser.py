@@ -21,13 +21,15 @@ Target baseline: KiCad file version ``20260206`` (KiCad 10).
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from shapely.geometry import LineString, Polygon
 from shapely.geometry.base import BaseGeometry
 from shapely.ops import unary_union
 
 from kicad_core.sexpr import Node, Sym, find, find_all, head, loads
+
+from .stackup import Stackup, parse_stackup
 
 BASELINE_VERSION = "20260206"
 
@@ -47,16 +49,39 @@ class Trace:
 
 
 @dataclass(frozen=True)
-class Board:
-    """The parsed board: its file version, routed traces, and per-layer planes.
+class PlaneRef:
+    """One reference plane, keyed by ``layer`` **and** ``net``.
 
-    ``planes`` maps a copper layer name to the union of a reference net's
-    ``filled_polygon`` islands on that layer (built by :func:`reference_planes`).
+    Where :func:`reference_planes` merges every reference net on a layer into a single
+    union, a ``PlaneRef`` keeps the net identity — the detector needs it to tell a
+    *reference-change* (GND → power along a segment, §4.4) from a clean solid plane.
+    ``geom`` is the ``unary_union`` of that net's ``filled_polygon`` islands on that
+    layer, antipads baked in (§3).
+    """
+
+    layer: str
+    net: str
+    geom: BaseGeometry
+
+
+@dataclass(frozen=True)
+class Board:
+    """The parsed board: version, routed traces, reference planes, stackup, propagation.
+
+    ``planes`` maps a copper layer name to the union of *all* reference nets'
+    ``filled_polygon`` islands on that layer (built by :func:`reference_planes`) — the
+    skeleton view. ``plane_refs`` is the richer net-identified view (§4) used by the
+    four-bucket classifier. ``stackup`` gives physical layer adjacency (§4.3) and
+    ``propagation`` holds any declared Track-Propagation references (§4.1), keyed by
+    signal-layer name.
     """
 
     version: str
     traces: tuple[Trace, ...]
     planes: dict[str, BaseGeometry]
+    plane_refs: tuple[PlaneRef, ...] = ()
+    stackup: Stackup = Stackup(order=())
+    propagation: dict[str, tuple[str, ...]] = field(default_factory=dict)
 
 
 # --------------------------------------------------------------------------- #
@@ -152,7 +177,15 @@ def parse_board(text: str, reference_nets: tuple[str, ...] = ("GND",)) -> Board:
         traces.append(Trace(net=net, layer=layer, width=width, line=line))
 
     planes = reference_planes(root, reference_nets)
-    return Board(version=version, traces=tuple(traces), planes=planes)
+    plane_refs = reference_plane_refs(root, reference_nets)
+    return Board(
+        version=version,
+        traces=tuple(traces),
+        planes=planes,
+        plane_refs=plane_refs,
+        stackup=parse_stackup(root),
+        propagation=parse_propagation(root),
+    )
 
 
 def reference_planes(
@@ -187,3 +220,69 @@ def reference_planes(
         if union.area >= min_pour_area_mm2:
             planes[layer] = union
     return planes
+
+
+def reference_plane_refs(
+    board: Node,
+    reference_nets: tuple[str, ...],
+    *,
+    min_pour_area_mm2: float = 1.0,
+) -> tuple[PlaneRef, ...]:
+    """Build one :class:`PlaneRef` per (layer, reference-net) pour above the area floor.
+
+    Unlike :func:`reference_planes` (which merges every reference net on a layer), this
+    keeps GND and a power net on the *same* layer as **separate** planes — the net
+    identity the four-bucket classifier needs for reference-change (§4.4). The
+    ``min_pour_area_mm2`` floor (§5.2) is applied **per** (layer, net) plane, so a sliver
+    power pour is excluded on its own merit even where a large GND plane shares the layer.
+    """
+    per_key: dict[tuple[str, str], list[Polygon]] = {}
+    for zone in find_all(board, "zone"):
+        net = _string_child(zone, "net")
+        if net is None or net not in reference_nets:
+            continue
+        for fp in find_all(zone, "filled_polygon"):
+            layer = _string_child(fp, "layer")
+            pts = _pts(fp)
+            if layer is None or len(pts) < 3:
+                continue
+            per_key.setdefault((layer, net), []).append(Polygon(pts))
+
+    refs: list[PlaneRef] = []
+    for (layer, net), polys in per_key.items():
+        union = unary_union(polys)
+        if union.area >= min_pour_area_mm2:
+            refs.append(PlaneRef(layer=layer, net=net, geom=union))
+    return tuple(refs)
+
+
+def parse_propagation(board: Node) -> dict[str, tuple[str, ...]]:
+    """Read the declared Track-Propagation references (§4.1), keyed by signal layer.
+
+    KiCad 10 lets a stackup declare a Bottom/Top Reference plane per signal layer. We
+    read it from ``(setup (track_propagation (layer "B.Cu" (top_reference "In2.Cu")) …))``
+    — folding each layer's ``top_reference`` / ``bottom_reference`` children into the set
+    of declared reference-layer names. A layer absent from the table is *silent*: the
+    detector falls back to geometric stackup adjacency (§4.3) for it. Geometric coverage
+    is re-checked regardless, so a void carved in a *declared* plane is still caught.
+
+    The table is optional; a board without one yields ``{}``.
+    """
+    setup = find(board, "setup")
+    table = find(setup, "track_propagation") if setup is not None else None
+    if table is None:
+        return {}
+
+    declared: dict[str, tuple[str, ...]] = {}
+    for entry in find_all(table, "layer"):
+        signal_layer = entry[1] if len(entry) > 1 and isinstance(entry[1], str) else None
+        if signal_layer is None:
+            continue
+        refs: list[str] = []
+        for ref_kind in ("top_reference", "bottom_reference"):
+            ref_layer = _string_child(entry, ref_kind)
+            if ref_layer is not None:
+                refs.append(ref_layer)
+        if refs:
+            declared[signal_layer] = tuple(refs)
+    return declared
