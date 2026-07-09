@@ -11,7 +11,11 @@ vias — and surfaces the findings without leaving KiCad:
   finding (waived findings drawn muted) that *survives* a native DRC run — the
   persistent record;
 - **selection** — clicking a finding flashes/selects the offending trace (selection
-  is KiCad's only interaction primitive over IPC).
+  is KiCad's only interaction primitive over IPC);
+- a **findings-list panel** — a **standalone window** (IPC gives no docked in-app UI,
+  so the panel cannot dock — it is a separate plugin window) listing *every* finding,
+  including `info` and waived, waived ones **sectioned**; clicking a row selects its
+  trace, and un-waiving a row rewrites `return-path.waivers.toml`.
 
 It is a thin, GUI-only wrapper: the analysis stays in the standalone `kicad-returnpath`
 engine, reached over the [IPC API](https://docs.kicad.org/kicad-python-main/)
@@ -98,5 +102,9 @@ for the full debugging reference.
 3. Findings appear as DRC markers (unwaived errors/warnings) and as a numbered
    `User.1` overlay (every finding; waived ones muted). Run native DRC if you like —
    the overlay persists; the injected markers do not.
-4. Configuration and waivers are read from the project's `return-path.toml` /
+4. The **findings-list panel** window opens with the complete list — every severity,
+   waived findings sectioned. Click a row to flash its trace; select a waived row and
+   **Un-waive** it to drop its entry from `return-path.waivers.toml` (it resurfaces on
+   the next run).
+5. Configuration and waivers are read from the project's `return-path.toml` /
    `return-path.waivers.toml` (discovered upward from the board), exactly as the CLI.

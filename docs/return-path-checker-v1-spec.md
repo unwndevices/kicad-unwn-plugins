@@ -355,10 +355,13 @@ Per the #4 mechanism (§9):
 - **Custom findings-list panel** — click-to-select navigation; **all** findings, waived
   **sectioned** (and where you un-waive).
 
-> **Open implementation risk (signpost, not a blocker):** the IPC plugin is a separate
-> process (§9), so whether the findings-list panel can be a **dockable in-app panel** or
-> must be a **standalone plugin window** is unconfirmed — resolve at execution or via a
-> small research pass. (Map *Not yet specified*.)
+> **Resolved (#24): a standalone plugin window.** The IPC plugin is a separate process and
+> KiCad's API offers **no docked UI, no events** — the only in-KiCad surface is a toolbar
+> button (§9, verified against kicad-python 0.7.1 + KiCad 10). A dockable in-app panel is
+> therefore impossible over IPC, so the findings-list panel is a **standalone plugin window**
+> the toolbar action opens (rendered from the pure `panel` row/section/un-waive policy; the Qt
+> window is the manual-acceptance layer). Clicking a finding drives the `add_to_selection`
+> primitive; un-waiving rewrites the `return-path.waivers.toml` sidecar (§7.2).
 
 ---
 
@@ -492,8 +495,8 @@ kicad-unwn-plugins/
 
 Not blockers for execution; flagged so they aren't lost.
 
-- **Findings-list panel hosting** — dockable in-app vs standalone window is unconfirmed
-  (§8.3); resolve at execution or via a small research pass.
+- ~~**Findings-list panel hosting**~~ — **Resolved (#24): a standalone window.** IPC gives no
+  docked UI (§9), so the panel is a standalone plugin window, not a dockable in-app panel (§8.3).
 - **CI story** — headless runs, exit codes (§10), report artifacts, a possible GitHub
   Action wrapping `return-path check`. (Map *Not yet specified*.)
 - **Other mono-repo plugins** beyond captouch + return-path — unspecified; each is its
