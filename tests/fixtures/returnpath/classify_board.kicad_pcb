@@ -1,0 +1,120 @@
+(kicad_pcb
+	(version 20260206)
+	(generator "returnpath-fixture")
+	(general
+		(thickness 1.6)
+	)
+	(paper "A4")
+	(layers
+		(0 "F.Cu" signal)
+		(1 "In1.Cu" signal)
+		(2 "In2.Cu" signal)
+		(31 "B.Cu" signal)
+		(44 "Edge.Cuts" user)
+	)
+	(net 0 "")
+	(net 1 "GND")
+	(net 2 "+3V3")
+	(net 3 "SIG_STRIP")
+	(net 4 "SIG_MICRO")
+	(net 5 "SIG_REFCHG")
+	(net 6 "SIG_SPLIT")
+	(net 7 "SIG_EDGE")
+	(gr_rect
+		(start 0 0)
+		(end 60 40)
+		(layer "Edge.Cuts")
+		(width 0.1)
+	)
+	(segment
+		(start 8 10)
+		(end 20 10)
+		(width 0.25)
+		(layer "In1.Cu")
+		(net "SIG_STRIP")
+	)
+	(segment
+		(start 8 30)
+		(end 20 30)
+		(width 0.25)
+		(layer "B.Cu")
+		(net "SIG_MICRO")
+	)
+	(segment
+		(start 20 10)
+		(end 40 10)
+		(width 0.25)
+		(layer "B.Cu")
+		(net "SIG_REFCHG")
+	)
+	(segment
+		(start 45 10)
+		(end 45 30)
+		(width 0.25)
+		(layer "B.Cu")
+		(net "SIG_SPLIT")
+	)
+	(segment
+		(start 52 30)
+		(end 52 45)
+		(width 0.25)
+		(layer "B.Cu")
+		(net "SIG_EDGE")
+	)
+	(zone
+		(net "GND")
+		(layers "F.Cu")
+		(filled_polygon
+			(layer "F.Cu")
+			(pts
+				(xy 2 2) (xy 58 2) (xy 58 38) (xy 2 38)
+			)
+		)
+	)
+	(zone
+		(net "GND")
+		(layers "In2.Cu")
+		(filled_polygon
+			(layer "In2.Cu")
+			(pts
+				(xy 2 2) (xy 30 2) (xy 30 38) (xy 2 38)
+			)
+		)
+	)
+	(zone
+		(net "+3V3")
+		(layers "In2.Cu")
+		(filled_polygon
+			(layer "In2.Cu")
+			(pts
+				(xy 30 2) (xy 58 2) (xy 58 18) (xy 30 18)
+			)
+		)
+		(filled_polygon
+			(layer "In2.Cu")
+			(pts
+				(xy 30 22) (xy 58 22) (xy 58 38) (xy 30 38)
+			)
+		)
+	)
+	(zone
+		(net "GND")
+		(layers "B.Cu")
+		(filled_polygon
+			(layer "B.Cu")
+			(pts
+				(xy 2 2) (xy 58 2) (xy 58 38) (xy 2 38)
+			)
+		)
+	)
+	(zone
+		(net "GND")
+		(layers "In1.Cu")
+		(filled_polygon
+			(layer "In1.Cu")
+			(pts
+				(xy 1 1) (xy 1.5 1) (xy 1.5 1.5) (xy 1 1.5)
+			)
+		)
+	)
+)
