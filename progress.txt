@@ -1,6 +1,38 @@
 # Ralph progress log — newest entries first.
 # Each iteration appends a dated entry describing the issue worked and what landed.
 
+## 2026-07-09 — #16 Carve out the shared kicad-core package (sexpr parser)
+
+Extracted the S-expression read/emit parser out of captouch into a new lean
+`kicad-core` workspace package — the deferred carve-out the v1 spec (§11)
+triggers once a second consumer (the return-path checker, #17+) needs it.
+
+- packages/kicad-core/: new hatchling package holding `kicad_core.sexpr` (moved
+  verbatim from `captouch.sexpr`; public API loads/dumps/find/find_all/head/
+  children/Sym unchanged), plus __init__/README/LICENSE. PLACEHOLDER.md dropped.
+- captouch now imports the parser from `kicad_core` — footprint.py, symbol.py,
+  library.py (+ dxf/library docstrings) rewired; every test import switched from
+  `captouch.sexpr` to `kicad_core.sexpr`. No `captouch.sexpr` reference remains.
+  captouch declares `kicad-core` as a runtime dependency; the workspace resolves
+  it as a path dep (`[tool.uv.sources]`).
+- Root pyproject: unexcluded kicad-core from the workspace, added it to uv
+  sources, pytest pythonpath, ruff src, mypy files + mypy_path, coverage source.
+- New tests/test_kicad_core.py locks the shared API surface and asserts the
+  package imports independently of captouch. Built kicad-core as a standalone
+  sdist+wheel (`uv build`) — release.yml already routes `core-v*` tags to it,
+  so AC4's per-tool tag path is live.
+
+Verification: ruff + ruff format + mypy clean; 709 non-GUI tests pass (+ the new
+4). The only red tests are the pre-existing headless PySide6 failures
+(libGL/libglib absent in the sandbox), confirmed identical on the pre-change
+tree — not #16 regressions. All four ACs met.
+
+NOTE (hand-off, not #16 scope): captouch now depends on `kicad-core`, so the
+deferred AC5 follow-up from #15 (retire the GitHub-archive stopgap → publish to
+PyPI) must publish BOTH kicad-core and kicad-captouch to PyPI, in that order, or
+the plugin's archive install would fail to resolve the new dependency. The spec
+§11 already calls for "core + tools published to PyPI".
+
 ## 2026-07-09 — #15 verified complete and closed
 
 The implementation below (build_pcm per-tool registry + tag-routed release.yml +
