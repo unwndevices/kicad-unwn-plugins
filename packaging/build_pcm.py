@@ -1,7 +1,11 @@
 #!/usr/bin/env python3
 """Build the KiCad PCM (Plugin and Content Manager) distribution artifacts.
 
-From the single-source plugin bundle in ``plugins/captouch/`` this produces:
+The monorepo ships one PCM package per tool (``--tool``, default ``captouch``) from
+one shared repository index; a tool is described by a :class:`ToolSpec` entry in the
+``TOOLS`` registry, so packaging a new tool is a registry entry, not a code fork.
+
+From the selected tool's plugin bundle in ``plugins/<tool>/`` this produces:
 
 * ``<outdir>/<archive>.zip``         the installable PCM package (``metadata.json`` +
                                      ``plugins/`` + ``resources/icon.png``) — what a
@@ -33,19 +37,97 @@ import json
 import os
 import shutil
 import zipfile
+from dataclasses import dataclass
 from pathlib import Path
-
-# Reverse-DNS package identifier; matches the IPC manifest's identifier and the
-# managed-venv directory name. Must satisfy three rules at once: the PCM schema
-# pattern, the IPC api/schemas/v1 pattern, and KiCad's stricter C++ check
-# (API_PLUGIN::IsValidIdentifier wants a word.word.word run — and \w excludes
-# hyphens, so the hyphen must sit only in the trailing GitHub-repo segment).
-IDENTIFIER = "com.github.unwndevices.kicad-captouch"
 
 HERE = Path(__file__).resolve().parent
 REPO_ROOT = HERE.parent
 SCHEMA_PATH = HERE / "pcm.v2.schema.json"
 PCM_ICON = HERE / "pcm-icon.png"
+
+# The shared PCM repository index describes the whole monorepo, not one tool: a
+# user adds a single repository URL and sees every published tool. Per-tool
+# releases each redeploy this same index (§11 of the return-path-checker spec).
+INDEX_NAME = "unwndevices KiCad plugins"
+MAINTAINER = "Ciro Caputo Viglione"
+
+
+@dataclass(frozen=True)
+class ToolSpec:
+    """Everything the PCM build needs that varies from one tool to the next.
+
+    The monorepo ships one PCM package per tool (captouch today; returnpath next)
+    from one shared repository index. A tool is fully described by this record, so
+    generalizing the build to a new tool is a registry entry, not a code fork.
+    """
+
+    name: str
+    """Registry key and release-tag prefix, e.g. ``captouch`` (tag ``captouch-vX.Y.Z``)."""
+
+    identifier: str
+    """Reverse-DNS PCM identifier — matches the IPC manifest identifier and the
+    managed-venv directory name. Must satisfy three rules at once: the PCM schema
+    pattern, the IPC api/schemas/v1 pattern, and KiCad's stricter C++ check
+    (``API_PLUGIN::IsValidIdentifier`` wants a word.word.word run — and ``\\w``
+    excludes hyphens, so the hyphen must sit only in the trailing repo segment).
+    Never change a shipped tool's identifier: it is what KiCad keys installs on."""
+
+    display_name: str
+    """PCM ``metadata.json`` ``name``."""
+
+    description: str
+    """One-line PCM ``description``."""
+
+    description_full: str
+    """Long-form PCM ``description_full``."""
+
+    plugin_subdir: str
+    """Bundle directory under ``plugins/`` (e.g. ``captouch``)."""
+
+    package_name: str
+    """Distribution / PyPI package name (e.g. ``kicad-captouch``); also the PCM
+    archive basename (``<package_name>-pcm-<version>.zip``)."""
+
+    kicad_version: str = "9.0"
+    """Minimum KiCad version advertised in the package version record."""
+
+
+def _captouch_description_full() -> str:
+    return (
+        "Generate parametric capacitive-touch interface footprints — sliders, "
+        "wheels, trackpads, mutual-capacitance sliders, and self-cap keypads — and "
+        "their matching symbols, then install them straight into the open board's "
+        "project library, ready to place with KiCad's own Add Footprint / Add Symbol "
+        "pickers.\n\n"
+        "The generator opens a live-preview design window from inside KiCad (Tools → "
+        "External Plugins). Generation is done by the standalone kicad-captouch engine "
+        "via direct S-expression emission, so the placed footprint is byte-identical "
+        "to the CLI/GUI output. GPL-3.0."
+    )
+
+
+# The registry of tools that ship a PCM package. returnpath (a CLI-first tool) and
+# core (no plugin) are reserved on paper and register themselves once they ship —
+# see docs/return-path-checker-v1-spec.md §11.
+TOOLS: dict[str, ToolSpec] = {
+    "captouch": ToolSpec(
+        name="captouch",
+        identifier="com.github.unwndevices.kicad-captouch",
+        display_name="Capacitive-Touch Footprint Generator",
+        description=(
+            "Generate parametric capacitive-touch slider, wheel, trackpad, "
+            "mutual-slider, and keypad footprints (plus symbols) and add them to the "
+            "open project's library."
+        ),
+        description_full=_captouch_description_full(),
+        plugin_subdir="captouch",
+        package_name="kicad-captouch",
+    ),
+}
+
+# Back-compat alias: the default tool's identifier. Kept because callers and tests
+# reference ``build_pcm.IDENTIFIER`` directly.
+IDENTIFIER = TOOLS["captouch"].identifier
 
 # Files copied from the plugin bundle into the package's ``plugins/`` directory.
 # README.md / make_icons.py are developer files KiCad does not need at runtime.
@@ -96,22 +178,10 @@ def _pin_requirements(text: str, tag: str) -> str:
     return text.replace(moving, pinned)
 
 
-def _description_full() -> str:
-    return (
-        "Generate parametric capacitive-touch interface footprints — sliders, "
-        "wheels, trackpads, mutual-capacitance sliders, and self-cap keypads — and "
-        "their matching symbols, then install them straight into the open board's "
-        "project library, ready to place with KiCad's own Add Footprint / Add Symbol "
-        "pickers.\n\n"
-        "The generator opens a live-preview design window from inside KiCad (Tools → "
-        "External Plugins). Generation is done by the standalone kicad-captouch engine "
-        "via direct S-expression emission, so the placed footprint is byte-identical "
-        "to the CLI/GUI output. GPL-3.0."
-    )
-
-
-def _package_metadata(version: str, repo_slug: str, *, with_download: dict | None) -> dict:
-    """The ``metadata.json`` Package object.
+def _package_metadata(
+    tool: ToolSpec, version: str, repo_slug: str, *, with_download: dict | None
+) -> dict:
+    """The ``metadata.json`` Package object for *tool*.
 
     *with_download* is ``None`` for the copy embedded in the archive (the spec forbids
     ``download_*`` there) and the download dict for the repository copy.
@@ -119,24 +189,20 @@ def _package_metadata(version: str, repo_slug: str, *, with_download: dict | Non
     ver: dict = {
         "version": version,
         "status": "stable",
-        "kicad_version": "9.0",
+        "kicad_version": tool.kicad_version,
         "runtime": "ipc",
     }
     if with_download is not None:
         ver.update(with_download)
     return {
         "$schema": "https://go.kicad.org/pcm/schemas/v2",
-        "name": "Capacitive-Touch Footprint Generator",
-        "description": (
-            "Generate parametric capacitive-touch slider, wheel, trackpad, "
-            "mutual-slider, and keypad footprints (plus symbols) and add them to the "
-            "open project's library."
-        ),
-        "description_full": _description_full(),
-        "identifier": IDENTIFIER,
+        "name": tool.display_name,
+        "description": tool.description,
+        "description_full": tool.description_full,
+        "identifier": tool.identifier,
         "type": "plugin",
         "author": {
-            "name": "Ciro Caputo Viglione",
+            "name": MAINTAINER,
             "contact": {"web": f"https://github.com/{repo_slug}"},
         },
         "license": "GPL-3.0-or-later",
@@ -189,6 +255,7 @@ def build(
     plugin_dir: Path,
     outdir: Path,
     timestamp: int,
+    tool: ToolSpec = TOOLS["captouch"],
 ) -> dict:
     """Build the package archive and the repository index. Returns the artifact paths."""
     schema = _load_schema()
@@ -203,14 +270,14 @@ def build(
     _stage_plugins(plugin_dir, staging / "plugins", tag)
     shutil.copy2(PCM_ICON, staging / "resources" / "icon.png")
 
-    archive_meta = _package_metadata(version, repo_slug, with_download=None)
+    archive_meta = _package_metadata(tool, version, repo_slug, with_download=None)
     _validate(archive_meta, "Package", schema)
     (staging / "metadata.json").write_text(
         json.dumps(archive_meta, indent=2) + "\n", encoding="utf-8"
     )
 
     # 2. zip it, then size/hash it
-    archive = outdir / f"kicad-captouch-pcm-{version}.zip"
+    archive = outdir / f"{tool.package_name}-pcm-{version}.zip"
     install_size = _dir_size(staging)
     _write_zip(staging, archive)
     download_size = archive.stat().st_size
@@ -221,6 +288,7 @@ def build(
     repo_dir = outdir / "repo"
     repo_dir.mkdir(parents=True, exist_ok=True)
     repo_meta = _package_metadata(
+        tool,
         version,
         repo_slug,
         with_download={
@@ -239,17 +307,18 @@ def build(
     res_staging = outdir / "_resources"
     if res_staging.exists():
         shutil.rmtree(res_staging)
-    (res_staging / IDENTIFIER).mkdir(parents=True)
-    shutil.copy2(PCM_ICON, res_staging / IDENTIFIER / "icon.png")
+    (res_staging / tool.identifier).mkdir(parents=True)
+    shutil.copy2(PCM_ICON, res_staging / tool.identifier / "icon.png")
     _write_zip(res_staging, resources_zip)
 
-    # 5. repository.json — the URL the user adds to the PCM
+    # 5. repository.json — the shared index URL a user adds to the PCM (repo-wide,
+    #    not per-tool; each tool release redeploys it).
     packages_json = repo_dir / "packages.json"
     repository = {
         "$schema": "https://go.kicad.org/pcm/schemas/v2",
-        "name": "kicad-captouch — Capacitive-Touch Footprint Generator",
+        "name": INDEX_NAME,
         "schema_version": 2,
-        "maintainer": {"name": "Ciro Caputo Viglione", "contact": {"web": pages_url}},
+        "maintainer": {"name": MAINTAINER, "contact": {"web": pages_url}},
         "packages": {
             "url": f"{pages_url.rstrip('/')}/packages.json",
             "sha256": _sha256(packages_json),
@@ -282,13 +351,23 @@ def build(
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Build KiCad PCM package + repository index.")
     parser.add_argument("--version", required=True, help="package version, e.g. 0.1.0")
-    parser.add_argument("--tag", help="git tag for the release (default: v<version>)")
+    parser.add_argument(
+        "--tool",
+        default="captouch",
+        choices=sorted(TOOLS),
+        help="which tool to package (default: captouch)",
+    )
+    parser.add_argument("--tag", help="git tag for the release (default: <tool>-v<version>)")
     parser.add_argument("--repo", default="unwndevices/kicad-unwn-plugins", help="owner/name slug")
     parser.add_argument(
         "--pages-url",
         help="base URL hosting the repository index (default: https://<owner>.github.io/<name>)",
     )
-    parser.add_argument("--plugin-dir", type=Path, default=REPO_ROOT / "plugins" / "captouch")
+    parser.add_argument(
+        "--plugin-dir",
+        type=Path,
+        help="plugin bundle dir (default: plugins/<tool subdir>)",
+    )
     parser.add_argument("--outdir", type=Path, default=REPO_ROOT / "dist")
     parser.add_argument(
         "--timestamp",
@@ -298,7 +377,9 @@ def main(argv: list[str] | None = None) -> int:
     )
     args = parser.parse_args(argv)
 
-    tag = args.tag or f"v{args.version}"
+    tool = TOOLS[args.tool]
+    tag = args.tag or f"{tool.name}-v{args.version}"
+    plugin_dir = args.plugin_dir or (REPO_ROOT / "plugins" / tool.plugin_subdir)
     owner, _, name = args.repo.partition("/")
     pages_url = args.pages_url or f"https://{owner}.github.io/{name}"
 
@@ -307,9 +388,10 @@ def main(argv: list[str] | None = None) -> int:
         tag=tag,
         repo_slug=args.repo,
         pages_url=pages_url,
-        plugin_dir=args.plugin_dir.resolve(),
+        plugin_dir=plugin_dir.resolve(),
         outdir=args.outdir,
         timestamp=args.timestamp,
+        tool=tool,
     )
     print(f"package:  {result['archive']}")
     print(f"  sha256: {result['download_sha256']}")

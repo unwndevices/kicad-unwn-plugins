@@ -134,3 +134,65 @@ def test_build_is_deterministic(tmp_path):
 def test_pin_requirements_rejects_missing_marker():
     with pytest.raises(ValueError):
         build_pcm._pin_requirements("kicad-python>=0.5\n", TAG)
+
+
+# ---- per-tool generalization (#15) -----------------------------------------
+
+
+def test_tool_registry_lists_captouch():
+    """captouch is registered and its identifier is the (unchanged) one KiCad keys on."""
+    spec = build_pcm.TOOLS["captouch"]
+    assert spec.identifier == build_pcm.IDENTIFIER
+    assert spec.identifier == "com.github.unwndevices.kicad-captouch"
+    assert spec.package_name == "kicad-captouch"
+
+
+def test_build_defaults_to_captouch_and_is_byte_identical(artifacts, tmp_path):
+    """Building with no explicit tool must reproduce the captouch archive verbatim."""
+    default = build_pcm.build(
+        version=VERSION,
+        tag=TAG,
+        repo_slug="unwndevices/kicad-unwn-plugins",
+        pages_url="https://unwndevices.github.io/kicad-unwn-plugins",
+        plugin_dir=PLUGIN_DIR,
+        outdir=tmp_path / "default",
+        timestamp=1_700_000_000,
+    )
+    assert default["archive"].name == "kicad-captouch-pcm-0.1.0.zip"
+    assert default["download_sha256"] == artifacts["download_sha256"]
+
+
+def test_build_honours_an_arbitrary_tool_spec(tmp_path):
+    """A different ToolSpec drives the archive name, identifier and resources key."""
+    spec = build_pcm.ToolSpec(
+        name="demo",
+        identifier="com.github.unwndevices.kicad-demo",
+        display_name="Demo Tool",
+        description="short",
+        description_full="full",
+        plugin_subdir="captouch",
+        package_name="kicad-demo",
+    )
+    res = build_pcm.build(
+        version=VERSION,
+        tag="demo-v0.1.0",
+        repo_slug="unwndevices/kicad-unwn-plugins",
+        pages_url="https://unwndevices.github.io/kicad-unwn-plugins",
+        plugin_dir=PLUGIN_DIR,
+        outdir=tmp_path,
+        timestamp=1_700_000_000,
+        tool=spec,
+    )
+    assert res["archive"].name == "kicad-demo-pcm-0.1.0.zip"
+    meta = json.loads(_read_in_zip(res["archive"], "metadata.json"))
+    assert meta["identifier"] == "com.github.unwndevices.kicad-demo"
+    assert meta["name"] == "Demo Tool"
+    # resources.zip keys each icon directory by the tool's identifier
+    with zipfile.ZipFile(res["resources_zip"]) as zf:
+        assert "com.github.unwndevices.kicad-demo/icon.png" in zf.namelist()
+
+
+def test_cli_tool_flag_builds_selected_tool(tmp_path):
+    rc = build_pcm.main(["--version", VERSION, "--tool", "captouch", "--outdir", str(tmp_path)])
+    assert rc == 0
+    assert (tmp_path / "kicad-captouch-pcm-0.1.0.zip").exists()
