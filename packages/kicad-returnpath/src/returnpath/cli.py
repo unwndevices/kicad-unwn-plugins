@@ -15,6 +15,7 @@ import argparse
 from pathlib import Path
 
 from . import __version__
+from .config import ConfigError, build_config
 from .detector import check_return_path
 from .parser import ParserContractError, parse_board
 from .report import SEVERITY_ORDER, format_text_report
@@ -32,9 +33,23 @@ def _check(args: argparse.Namespace) -> int:
         print(f"error: cannot read {board_path}: {exc}", flush=True)
         return 2
 
-    reference_nets = tuple(args.reference_nets)
     try:
-        board = parse_board(text, reference_nets)
+        config = build_config(
+            board_path,
+            explicit=args.config,
+            reference_nets=tuple(args.reference_nets) if args.reference_nets else None,
+            include=tuple(args.include) if args.include else None,
+            exclude=tuple(args.exclude) if args.exclude else None,
+            sets=args.set,
+        )
+    except ConfigError as exc:
+        print(f"error: {exc}", flush=True)
+        return 2
+
+    reference_nets = config.reference_nets
+    min_pour_area = config.for_net().min_pour_area_mm2
+    try:
+        board = parse_board(text, reference_nets, min_pour_area_mm2=min_pour_area)
     except ParserContractError as exc:
         print(f"error: {board_path.name}: {exc}", flush=True)
         return 2
@@ -42,7 +57,12 @@ def _check(args: argparse.Namespace) -> int:
         print(f"error: {board_path.name}: could not parse board: {exc}", flush=True)
         return 2
 
-    findings = check_return_path(board, reference_nets=reference_nets)
+    findings = check_return_path(
+        board,
+        reference_nets=reference_nets,
+        config=config,
+        net_to_netclass=board.net_classes,
+    )
     print(format_text_report(board_path.name, findings))
     return _exit_code(findings, args.fail_on)
 
@@ -61,11 +81,36 @@ def _add_check_parser(sub: argparse._SubParsersAction) -> None:
         "board", type=Path, help="path to a .kicad_pcb (KiCad 10, file version 20260206)"
     )
     p.add_argument(
+        "--config",
+        type=Path,
+        default=None,
+        metavar="PATH",
+        help="explicit return-path.toml (else discovered upward from the board)",
+    )
+    p.add_argument(
         "--reference-nets",
         nargs="+",
-        default=["GND"],
+        default=None,
         metavar="NET",
-        help="reference (plane) net names (default: GND)",
+        help="override reference (plane) net names (default: GND + power)",
+    )
+    p.add_argument(
+        "--include",
+        action="append",
+        metavar="NET",
+        help="force-check a net even if excluded (repeatable)",
+    )
+    p.add_argument(
+        "--exclude",
+        action="append",
+        metavar="NET",
+        help="skip a net or netclass (repeatable)",
+    )
+    p.add_argument(
+        "--set",
+        action="append",
+        metavar="KEY=VALUE",
+        help="ad-hoc threshold/severity override, e.g. min_crossing_span_mm=0.2 (repeatable)",
     )
     p.add_argument(
         "--fail-on",

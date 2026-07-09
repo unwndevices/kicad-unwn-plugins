@@ -29,13 +29,15 @@ spans).
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from collections.abc import Mapping
+from dataclasses import dataclass, replace
 
 from shapely.geometry import Point
 from shapely.geometry.base import BaseGeometry
 from shapely.ops import unary_union
 from shapely.prepared import PreparedGeometry, prep
 
+from .config import Config
 from .parser import Board, PlaneRef, Trace
 
 # §4.4 / §5 default severities for the classes this detector emits.
@@ -229,11 +231,35 @@ def check_return_path(
     board: Board,
     *,
     reference_nets: tuple[str, ...] = ("GND",),
+    config: Config | None = None,
+    net_to_netclass: Mapping[str, str] | None = None,
     min_crossing_span_mm: float = 0.1,
     sliver_ignore_area_mm2: float = 0.0065,
     sampling_tolerance_mm: float = 0.05,
 ) -> list[Finding]:
-    """Resolve each trace's reference plane(s) and classify it into the four §4.4 buckets."""
+    """Resolve each trace's reference plane(s) and classify it into the four §4.4 buckets.
+
+    When a :class:`~returnpath.config.Config` is passed, per-net thresholds and severities
+    are resolved under §6.2 precedence, the §6.1 victim set filters which nets are checked,
+    and a class set to ``ignore`` (§7.1) emits nothing. Without one, the explicit threshold
+    kwargs apply board-wide (the walking-skeleton path) with the §4.4 default severities.
+    """
+    net_to_netclass = net_to_netclass or {}
+    plane_nets = {pr.net for pr in board.plane_refs}
+
+    # A reference net is never a victim — skip any trace whose net forms a plane on this
+    # board, not just those named in `reference_nets`. This keeps the skip set aligned with
+    # `board.plane_refs` even when the caller passes a reference_nets that diverges from the
+    # one `parse_board` built the planes with (else a power trace could self-reference).
+    skip_nets = set(reference_nets) | plane_nets
+
+    victims: set[str] | None = None
+    if config is not None:
+        signal_nets = {t.net for t in board.traces} - plane_nets
+        victims = config.victims(signal_nets, net_to_netclass)
+        # A board-wide geometric tolerance (the buffer below) uses the defaults layer.
+        sampling_tolerance_mm = config.for_net().sampling_tolerance_mm
+
     # Prepare + buffer each plane once (§2 optimisation), keyed by its (layer, net) —
     # unique per plane_ref, so the lookup is self-evidently correct.
     prep_by_key = {(pr.layer, pr.net): prep(pr.geom) for pr in board.plane_refs}
@@ -241,26 +267,31 @@ def check_return_path(
         (pr.layer, pr.net): pr.geom.buffer(sampling_tolerance_mm) for pr in board.plane_refs
     }
 
-    # A reference net is never a victim — skip any trace whose net forms a plane on this
-    # board, not just those named in `reference_nets`. This keeps the skip set aligned with
-    # `board.plane_refs` even when the caller passes a reference_nets that diverges from the
-    # one `parse_board` built the planes with (else a power trace could self-reference).
-    skip_nets = set(reference_nets) | {pr.net for pr in board.plane_refs}
-
     findings: list[Finding] = []
     for trace in board.traces:
         if trace.net in skip_nets:
             continue
-        findings.extend(
-            _classify(
-                trace,
-                _candidates(trace, board),
-                prep_by_key,
-                edge_by_key,
-                min_crossing_span_mm=min_crossing_span_mm,
-                sliver_ignore_area_mm2=sliver_ignore_area_mm2,
-            )
+        if victims is not None and trace.net not in victims:
+            continue
+
+        span, sliver = min_crossing_span_mm, sliver_ignore_area_mm2
+        resolved = None
+        if config is not None:
+            resolved = config.for_net(trace.net, net_to_netclass.get(trace.net))
+            span, sliver = resolved.min_crossing_span_mm, resolved.sliver_ignore_area_mm2
+
+        raw = _classify(
+            trace,
+            _candidates(trace, board),
+            prep_by_key,
+            edge_by_key,
+            min_crossing_span_mm=span,
+            sliver_ignore_area_mm2=sliver,
         )
+        if resolved is not None:
+            raw = [replace(f, severity=resolved.severity_for(f.cls)) for f in raw]
+            raw = [f for f in raw if f.severity != "ignore"]
+        findings.extend(raw)
     return findings
 
 

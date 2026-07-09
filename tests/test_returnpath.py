@@ -92,8 +92,8 @@ def test_reference_nets_thread_into_plane_selection():
 def test_cli_reference_nets_flag_finds_power_plane_split(tmp_path, capsys):
     board = tmp_path / "pwr.kicad_pcb"
     board.write_text(_power_plane_board())
-    # Default GND: no plane, nothing to fail on → clean exit 0.
-    assert main(["check", str(board)]) == 0
+    # Restrict to GND only: the +3V3 pour is not a plane → nothing to fail on → exit 0.
+    assert main(["check", str(board), "--reference-nets", "GND"]) == 0
     # Select the real reference net → the split surfaces and fails the build.
     assert main(["check", str(board), "--reference-nets", "+3V3"]) == 1
     assert "split-crossing" in capsys.readouterr().out
