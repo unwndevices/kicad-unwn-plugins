@@ -1,6 +1,19 @@
 # Ralph progress log — newest entries first.
 # Each iteration appends a dated entry describing the issue worked and what landed.
 
+## 2026-07-09 — #15 verified complete and closed
+
+The implementation below (build_pcm per-tool registry + tag-routed release.yml +
+PyPI job + tests) was landed and logged in a prior iteration but the issue was
+left open. Re-verified this iteration before closing: PCM tests 11/11 green, ruff
++ mypy clean on packaging/build_pcm.py, `build_pcm --tool captouch` byte-identical,
+and release.yml per-tool routing sound. The remaining suite failures are purely
+environmental (missing libGL/libglib in the headless sandbox), not #15 regressions.
+Every agent-implementable AC (AC1–AC4 + the AC5 PyPI *pipeline*) is in place; the
+single AC5 follow-up (flipping plugins/captouch/requirements.txt off the
+GitHub-archive stopgap) stays deferred until the PyPI Trusted Publisher is
+registered and the first release is live. Closed #15 to unblock dependents.
+
 ## 2026-07-09 — #15 Per-tool PCM/release and repo rename
 
 Generalized packaging + release from single-tool (captouch) to per-tool.
