@@ -157,12 +157,37 @@ def test_main_dispatches_board_file(monkeypatch, tmp_path):
 
 
 def test_main_reports_connection_failure(monkeypatch, capsys):
-    monkeypatch.setattr(
-        plugin, "run_in_kicad", lambda: (_ for _ in ()).throw(RuntimeError("no socket"))
-    )
+    def boom():
+        raise RuntimeError("no socket")
+
+    monkeypatch.setattr(plugin, "_connect_board", boom)
     rc = plugin.main([])
     assert rc == 2
-    assert "could not run in KiCad" in capsys.readouterr().err
+    err = capsys.readouterr().err
+    assert "could not reach KiCad over the IPC API" in err
+    assert "--board-file" in err  # the offered fallback
+
+
+def test_main_analysis_failure_is_not_mislabelled_as_connection(monkeypatch, capsys):
+    # A connected board that fails to analyze must NOT be reported as an IPC failure.
+    class _Board:
+        name = "live"
+
+        def get_as_string(self):
+            return "(kicad_pcb)"
+
+    monkeypatch.setattr(plugin, "_connect_board", lambda: _Board())
+    monkeypatch.setattr(plugin, "_board_disk_path", lambda b: Path("/tmp/x.kicad_pcb"))
+
+    def boom(text, path):
+        raise ValueError("bad board")
+
+    monkeypatch.setattr(plugin, "check_live_board", boom)
+    rc = plugin.main([])
+    assert rc == 2
+    err = capsys.readouterr().err
+    assert "could not check the live board" in err
+    assert "IPC API" not in err  # not the connection message
 
 
 # --------------------------------------------------------------------------- #
@@ -225,6 +250,18 @@ def test_overlay_waived_marks_are_muted():
     assert marks["e1"].muted is False
     assert marks["e1"].color == severity_color("error") != marks["e2"].color
     assert "[waived]" in marks["e2"].label
+
+
+def test_overlay_excludes_locationless_stale_waivers():
+    # A stale-waiver meta-finding has no board location (a (0,0) sentinel); drawing a
+    # crosshair at the board origin for it would be spurious, so it gets no overlay mark.
+    real = _finding(severity="error", id="e1", x=10.0, y=20.0)
+    stale = _finding(
+        check="stale-waiver", cls="stale-waiver", severity="info", id="s1", x=0.0, y=0.0
+    )
+    marks = overlay_marks([real, stale])
+    assert [m.finding.id for m in marks] == ["e1"]  # stale-waiver dropped, real kept
+    assert marks[0].number == 1
 
 
 def test_crosshair_lines_center_on_the_finding():

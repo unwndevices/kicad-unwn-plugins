@@ -75,15 +75,20 @@ class OverlayMark:
 
 
 def overlay_marks(findings: list[Finding]) -> list[OverlayMark]:
-    """Every finding as a numbered overlay mark (spec §8.3) — ``info`` and waived included.
+    """Board-located findings as numbered overlay marks (spec §8.3) — ``info`` and waived kept.
 
-    Nothing is dropped: the overlay is the persistent record that survives a native DRC
-    run. Waived marks carry ``muted=True`` and the muted colour so the renderer greys them.
-    The numbering matches :func:`returnpath.report.ordered_findings`, so the overlay,
-    the SVG crosshairs, and the panel all agree.
+    Every finding that *sits on the board* becomes a mark — the overlay is the persistent
+    record that survives a native DRC run — so ``info`` and waived findings are included
+    (waived marks carry ``muted=True`` + the muted colour for the renderer to grey). The
+    sole exclusion is the ``stale-waiver`` meta-finding, which reports a sidecar-hygiene
+    notice with *no board location* (its coordinates are a ``(0, 0)`` sentinel); drawing a
+    crosshair at the board origin for it would be spurious. Stale waivers still surface in
+    the text report and the findings-list panel. Numbering follows
+    :func:`returnpath.report.ordered_findings` over the kept marks.
     """
+    located = [f for f in ordered_findings(findings) if f.check != "stale-waiver"]
     marks: list[OverlayMark] = []
-    for n, f in enumerate(ordered_findings(findings), 1):
+    for n, f in enumerate(located, 1):
         marks.append(
             OverlayMark(
                 number=n,

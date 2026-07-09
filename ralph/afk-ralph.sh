@@ -6,6 +6,14 @@ if [ -z "$1" ]; then
   exit 1
 fi
 
+# Anchor to the repo root regardless of where this was invoked from: the sandbox
+# mounts '.' (the whole repo) and the agent prompt references repo-root paths
+# (@CLAUDE.md, @docs/, @progress.txt), so CWD must be the toplevel. .env is
+# gitignored and lives beside this script (ralph/), so read it by SCRIPT_DIR.
+SCRIPT_DIR="$(cd "$(dirname "$(readlink -f "$0")")" && pwd)"
+cd "$(git -C "$SCRIPT_DIR" rev-parse --show-toplevel)"
+ENV_FILE="$SCRIPT_DIR/.env"
+
 # Dependent issues build on one another through the shared (mounted) working
 # tree, so run them all on ONE branch — never main.
 if [ "$(git rev-parse --abbrev-ref HEAD 2>/dev/null)" = "main" ]; then
@@ -19,9 +27,9 @@ fi
 # shells and, via BASH_ENV, by non-interactive bash too). Idempotent: re-running
 # heals a reset/recreated sandbox.
 SANDBOX="claude-$(basename "$PWD")"
-if [ -f .env ]; then
+if [ -f "$ENV_FILE" ]; then
   docker sandbox create claude . >/dev/null 2>&1 || true   # no-op if it exists
-  docker sandbox exec --env-file .env "$SANDBOX" bash -c '
+  docker sandbox exec --env-file "$ENV_FILE" "$SANDBOX" bash -c '
     if [ -n "$GH_TOKEN" ] && ! grep -q "export GH_TOKEN=" /etc/sandbox-persistent.sh 2>/dev/null; then
       printf "export GH_TOKEN=%s\n" "$GH_TOKEN" >> /etc/sandbox-persistent.sh
     fi' || echo "WARN: could not write GH_TOKEN into the sandbox."
@@ -42,8 +50,8 @@ fi
 # long-lived CLAUDE_CODE_OAUTH_TOKEN (`claude setup-token`) in .env.
 # Idempotent: re-running heals a reset/recreated sandbox (otherwise the agent
 # exits 1 with "Not logged in" the moment the sandbox is recreated).
-if [ -f .env ]; then
-  CLAUDE_TOKEN=$(grep -m1 '^CLAUDE_CODE_OAUTH_TOKEN=' .env)
+if [ -f "$ENV_FILE" ]; then
+  CLAUDE_TOKEN=$(grep -m1 '^CLAUDE_CODE_OAUTH_TOKEN=' "$ENV_FILE")
   CLAUDE_TOKEN=${CLAUDE_TOKEN#CLAUDE_CODE_OAUTH_TOKEN=}
   if [ -n "$CLAUDE_TOKEN" ]; then
     CLAUDE_CREDS=$(printf '{"claudeAiOauth":{"accessToken":"%s","refreshToken":"","expiresAt":1900000000000,"scopes":["user:inference","user:profile","user:sessions:claude_code"],"subscriptionType":"max"}}' "$CLAUDE_TOKEN" | base64 -w0)

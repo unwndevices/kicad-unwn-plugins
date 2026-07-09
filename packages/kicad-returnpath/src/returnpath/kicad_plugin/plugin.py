@@ -155,8 +155,11 @@ def _flash_trace(board: object, result: CheckResult, finding_index: int) -> bool
 def _match_live_track(board: object, trace: object) -> object | None:
     """Find the live kipy track matching a parsed :class:`~returnpath.parser.Trace`.
 
-    Matched on net + layer + coincident endpoints — the parser and the live board share
-    the same coordinates, so a nanometre-rounded endpoint match is exact.
+    Matched on coincident endpoints — the parser and the live board share the same
+    coordinates, so a nanometre-rounded endpoint match is exact. A parsed :class:`Trace`
+    is a single straight segment (two endpoints), so the live track's two endpoints must
+    equal the parsed pair (an *equality*, not a subset — a subset would also match a
+    degenerate/collinear stub whose endpoints happen to fall in the parsed set).
     """
     get_tracks = getattr(board, "get_tracks", None)
     if not callable(get_tracks):
@@ -171,25 +174,55 @@ def _match_live_track(board: object, trace: object) -> object | None:
         if start is None or end is None:
             continue
         pts = {(round(start.x), round(start.y)), (round(end.x), round(end.y))}
-        if pts <= want:
+        if pts == want:
             return track
     return None
 
 
 def run_in_kicad() -> int:
-    """Connect to KiCad, check the live board, and surface the findings (§8.3)."""
-    board: Any = _connect_board()
-    text = board.get_as_string()
-    result = check_live_board(text, _board_disk_path(board))
+    """Connect to KiCad, check the live board, and surface the findings (§8.3).
+
+    Connection failures raise (so :func:`main` can print IPC-specific guidance); a board
+    that fails to parse/analyze also raises and is reported plainly — the two are *not*
+    conflated. Beyond the markers + overlay, the most-severe finding's trace is selected so
+    the ``add_to_selection`` navigation primitive (§8.3) is live on every run.
+    """
+    try:
+        board: Any = _connect_board()
+        disk = _board_disk_path(board)
+        text = board.get_as_string()
+    except Exception as exc:  # noqa: BLE001 — a connection/IPC failure gets specific guidance
+        _report_ipc_failure(exc)
+        return 2
+    # Analysis failures (e.g. a pre-KiCad-10 live board) propagate to main() and are
+    # reported plainly — they are *not* conflated with an IPC connection failure.
+    result = check_live_board(text, disk)
     markers = _inject_drc_markers(board, result)
     overlay = _draw_overlay(board, result)
+    flashed = _flash_trace(board, result, 0)  # jump to the worst finding
     print(format_text_report(_board_name(board), result.findings))
-    print(f"\nreturn-path: {markers} DRC marker(s), {overlay} overlay mark(s) drawn.")
+    print(
+        f"\nreturn-path: {markers} DRC marker(s), {overlay} overlay mark(s) drawn"
+        + ("; selected the top finding's trace." if flashed else ".")
+    )
     return 0
 
 
 def _board_name(board: object) -> str:
     return str(getattr(board, "name", None) or "live board")
+
+
+def _report_ipc_failure(exc: Exception) -> None:
+    """Print the guidance shown when KiCad cannot be reached over the IPC API."""
+    print(f"error: could not reach KiCad over the IPC API: {exc}", file=sys.stderr)
+    print(
+        "  Run this from inside KiCad (Tools → External Plugins → Return-Path Checker),",
+        file=sys.stderr,
+    )
+    print(
+        "  or pass --board-file BOARD.kicad_pcb to check a board without a live connection.",
+        file=sys.stderr,
+    )
 
 
 # --------------------------------------------------------------------------- #
@@ -236,16 +269,10 @@ def main(argv: list[str] | None = None) -> int:
 
     try:
         return run_in_kicad()
-    except Exception as exc:  # noqa: BLE001 — surface any connection/surfacing failure plainly
-        print(f"error: could not run in KiCad over the IPC API: {exc}", file=sys.stderr)
-        print(
-            "  Run this from inside KiCad (Tools → External Plugins → Return-Path Checker),",
-            file=sys.stderr,
-        )
-        print(
-            "  or pass --board-file BOARD.kicad_pcb to check a board without a live connection.",
-            file=sys.stderr,
-        )
+    except Exception as exc:  # noqa: BLE001 — a parse/analysis/surfacing failure, reported plainly
+        # Connection failures are already handled (with IPC guidance) inside run_in_kicad;
+        # anything reaching here is the live board failing to parse/analyze or a draw error.
+        print(f"error: could not check the live board: {exc}", file=sys.stderr)
         return 2
 
 

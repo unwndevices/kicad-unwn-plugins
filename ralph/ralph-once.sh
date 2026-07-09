@@ -5,6 +5,11 @@
 # autonomous looped variant (sandboxed; closes issues to flow through their
 # dependencies) see afk-ralph.sh.
 
+# Anchor to the repo root regardless of where this was invoked from: the prompt
+# references repo-root paths (@CLAUDE.md, @docs/, @progress.txt) and drives git,
+# so CWD must be the toplevel.
+cd "$(git -C "$(dirname "$(readlink -f "$0")")" rev-parse --show-toplevel)"
+
 claude --dangerously-skip-permissions "/implement @CLAUDE.md @docs/plan-v2.md @progress.txt \
 You are working the kicad-unwn-plugins issue tracker (unwndevices/kicad-unwn-plugins) autonomously. \
 The implementation flow above — TDD at agreed seams, run typechecking and the pytest suite, /code-review, \
