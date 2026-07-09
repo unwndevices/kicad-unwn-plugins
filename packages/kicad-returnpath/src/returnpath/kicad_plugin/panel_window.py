@@ -27,24 +27,35 @@ from ..detector import Finding
 from ..engine import CheckResult
 from .panel import PanelRow, panel_sections, unwaive
 
+# Holds the live panel window when KiCad already runs the Qt loop: a modeless ``show()`` returns
+# immediately, so without a reference the window would be garbage-collected and vanish.
+_open_windows: list = []
+
 
 def open_findings_panel(
     result: CheckResult,
     waiver_path: Path,
     on_select: Callable[[Finding], bool],
 ) -> None:
-    """Open the standalone findings-list window for *result* and run it to close (spec §8.3).
+    """Open the standalone findings-list window for *result* (spec §8.3).
 
     *on_select* flashes a clicked finding's trace on the live board; *waiver_path* is the sidecar
-    an un-waive rewrites. Reuses an existing ``QApplication`` when KiCad already runs one, else
-    creates one, and blocks on the event loop until the user closes the window.
+    an un-waive rewrites. When KiCad already runs a ``QApplication`` (the normal in-plugin case),
+    the window is shown **modeless** and this returns at once, so the user can click a finding and
+    watch it flash in the still-interactive PCB canvas — a nested ``exec()`` on KiCad's own loop is
+    avoided, and a module reference keeps the modeless window alive. Only when *we* own the app
+    (e.g. run standalone outside KiCad) do we drive the event loop until the window closes.
     """
     from PySide6 import QtWidgets  # lazy: Qt is absent in CI and headless runs
 
-    app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
+    existing = QtWidgets.QApplication.instance()
+    app = existing or QtWidgets.QApplication([])
     window = _make_window_class()(result, waiver_path, on_select)
     window.show()
-    app.exec()
+    if existing is not None:
+        _open_windows.append(window)  # KiCad drives the loop; keep the modeless window alive
+        return
+    app.exec()  # we own the app (standalone) — block until the window closes
 
 
 def _make_window_class() -> type:
@@ -147,14 +158,3 @@ def _make_window_class() -> type:
                 self._status.setText(f"no waiver entry {finding.id} in {self._waiver_path.name}")
 
     return FindingsPanelWindow
-
-
-def __getattr__(name: str) -> object:
-    """Lazily materialise :class:`FindingsPanelWindow` only when Qt is actually available.
-
-    Keeps ``from returnpath.kicad_plugin.panel_window import ...`` cheap and Qt-free at import
-    time (CI has no PySide6); the class is built on first attribute access.
-    """
-    if name == "FindingsPanelWindow":
-        return _make_window_class()
-    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

@@ -28,9 +28,9 @@ from .waivers import (
     append_waiver,
     apply_waivers,
     discover_waivers,
-    dump_waivers,
     git_author,
     load_waivers,
+    remove_waivers,
     stale_findings,
     today_stamp,
     waiver_for,
@@ -190,13 +190,11 @@ def _do_waive(
 
 def _do_prune(waiver_path: Path | None, stale: list) -> None:
     """Remove stale/expired waivers from the sidecar (only on explicit ``--prune-waivers``)."""
-    if waiver_path is None or not waiver_path.is_file():
+    if waiver_path is None:
         return
-    stale_ids = {w.id for w in stale}
-    kept = [w for w in load_waivers(waiver_path) if w.id not in stale_ids]
-    waiver_path.write_text(dump_waivers(kept), encoding="utf-8")
-    if stale_ids:
-        print(f"pruned {len(stale_ids)} stale waiver(s) from {waiver_path.name}", flush=True)
+    removed = remove_waivers(waiver_path, {w.id for w in stale})
+    if removed:
+        print(f"pruned {removed} stale waiver(s) from {waiver_path.name}", flush=True)
 
 
 def _exit_code(findings: list[Finding], fail_on: str) -> int:

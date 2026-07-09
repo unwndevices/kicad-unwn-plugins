@@ -15,13 +15,16 @@ KiCad's API offers **no docked UI, no events** — the only in-KiCad surface is 
 impossible over IPC; the panel is a **standalone plugin window** the toolbar action opens.
 
 * :func:`panel_rows` — *every* finding as a numbered row in the shared report order (§8.2),
-  so a row's number matches the text/JSON/HTML report and the User-layer overlay. ``info``,
-  waived, and stale-waiver findings are all kept — the panel is the one surface that shows the
-  complete set (the DRC panel and overlay each drop some; §8.3).
+  so a row's number matches the text/JSON/SVG/HTML report list. ``info``, waived, and
+  stale-waiver findings are all kept — the panel is the one surface that shows the complete set
+  (the DRC panel keeps only unwaived error/warning; the overlay drops location-less stale
+  waivers, so its crosshair numbers coincide with the panel's only when no stale waiver sorts
+  ahead of a located finding; §8.3).
 * :func:`panel_sections` — the same rows split into ``(active, waived)`` so the window can
   section waived findings separately (§8.3), the place a user un-waives from.
-* :func:`unwaive` — remove a waiver entry from ``return-path.waivers.toml`` and rewrite it
-  (§7.2), reusing the same load/dump path as ``--prune-waivers``.
+* :func:`unwaive` — remove a waiver entry from ``return-path.waivers.toml`` and rewrite it via
+  the shared :func:`returnpath.waivers.remove_waivers` (the same write-back ``--prune-waivers``
+  uses), so the un-waived finding resurfaces on the next run.
 """
 
 from __future__ import annotations
@@ -31,7 +34,7 @@ from pathlib import Path
 
 from ..detector import Finding
 from ..report import ordered_findings, severity_color
-from ..waivers import dump_waivers, load_waivers
+from ..waivers import remove_waivers
 
 __all__ = [
     "PanelRow",
@@ -46,8 +49,9 @@ class PanelRow:
     """One row of the findings-list panel (spec §8.3).
 
     ``number`` is the shared 1-based index over :func:`returnpath.report.ordered_findings`, so
-    it matches the text/JSON/HTML report list and lines up with the User-layer overlay
-    crosshairs. ``finding`` is the record the row selects/flashes on click (via
+    it matches the text/JSON/SVG/HTML report list (and the User-layer overlay crosshairs, which
+    coincide unless a location-less stale waiver sorts ahead of a located finding).
+    ``finding`` is the record the row selects/flashes on click (via
     :func:`returnpath.kicad_plugin.surfaces.trace_for_finding`) and un-waives by its
     ``finding.id``. ``color`` is the severity colour (muted grey when waived) shared with every
     other surface; ``waived`` sections the row and enables its un-waive action; ``label`` is a
@@ -72,10 +76,10 @@ def panel_rows(findings: list[Finding]) -> list[PanelRow]:
     """*Every* finding as a numbered panel row in the shared report order (spec §8.3).
 
     Numbering follows :func:`returnpath.report.ordered_findings` (errors first, then by net +
-    location) so a row's number matches the report formats and the overlay. Nothing is dropped
-    — ``info``, waived, and stale-waiver findings are all listed, since the panel is the single
-    surface that shows the complete set (the DRC panel keeps only unwaived error/warning; the
-    overlay drops location-less stale waivers; §8.3).
+    location) so a row's number matches the report formats. Nothing is dropped — ``info``,
+    waived, and stale-waiver findings are all listed, since the panel is the single surface that
+    shows the complete set (the DRC panel keeps only unwaived error/warning; the overlay drops
+    location-less stale waivers; §8.3).
     """
     return [
         PanelRow(
@@ -105,18 +109,10 @@ def panel_sections(findings: list[Finding]) -> tuple[list[PanelRow], list[PanelR
 def unwaive(waiver_path: Path, waiver_id: str) -> bool:
     """Remove the waiver entry ``waiver_id`` from the sidecar at *waiver_path* and rewrite it.
 
-    The panel's un-waive action writes back through the §7.2 system of record: it loads the
-    sidecar, drops the entry whose hash ``id`` matches, and rewrites the file with
-    :func:`returnpath.waivers.dump_waivers` (the same path ``--prune-waivers`` uses). Returns
-    ``True`` when an entry was removed, ``False`` when the sidecar is missing or holds no such
-    id (so the caller can report a no-op rather than silently succeeding). The finding itself
-    resurfaces — active again — on the next run.
+    The panel's un-waive action writes back through the §7.2 system of record via the shared
+    :func:`returnpath.waivers.remove_waivers` (the same read → drop-by-id → rewrite path
+    ``--prune-waivers`` uses). Returns ``True`` when the entry was removed, ``False`` when the
+    sidecar is missing or holds no such id (so the caller can report a no-op rather than silently
+    succeeding). The finding itself resurfaces — active again — on the next run.
     """
-    if not waiver_path.is_file():
-        return False
-    existing = load_waivers(waiver_path)
-    kept = [w for w in existing if w.id != waiver_id]
-    if len(kept) == len(existing):
-        return False
-    waiver_path.write_text(dump_waivers(kept), encoding="utf-8")
-    return True
+    return remove_waivers(waiver_path, {waiver_id}) > 0

@@ -274,6 +274,25 @@ def append_waiver(path: Path, waiver: Waiver) -> None:
     path.write_text(prefix + _format_block(waiver), encoding="utf-8")
 
 
+def remove_waivers(path: Path, ids: set[str]) -> int:
+    """Drop every waiver whose id is in *ids* from the sidecar at *path* and rewrite it (§7.2).
+
+    The shared sidecar write-back both the CLI ``--prune-waivers`` (stale-entry cleanup) and the
+    findings-list panel's un-waive (#24) go through, so the read → drop-by-id → dump → write
+    contract lives in one place. Returns the number of entries removed; a missing file or no
+    match is a **0-count no-op** that never rewrites the file (so an un-waive of an absent id or
+    a prune with nothing stale leaves the checked-in sidecar byte-for-byte untouched).
+    """
+    if not path.is_file():
+        return 0
+    existing = load_waivers(path)
+    kept = [w for w in existing if w.id not in ids]
+    removed = len(existing) - len(kept)
+    if removed:
+        path.write_text(dump_waivers(kept), encoding="utf-8")
+    return removed
+
+
 def dump_waivers(waivers: list[Waiver]) -> str:
     """Serialise *waivers* to the full sidecar text — used by ``--prune-waivers`` (§10)."""
     out = ["version = 1", ""]

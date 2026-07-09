@@ -28,6 +28,7 @@ from returnpath.waivers import (
     dump_waivers,
     finding_id,
     load_waivers,
+    remove_waivers,
     stale_findings,
     waiver_for,
 )
@@ -146,6 +147,28 @@ def test_load_rejects_entry_without_id(tmp_path):
     path.write_text('version = 1\n[[waiver]]\nnet = "X"\n')
     with pytest.raises(Exception, match="id"):
         load_waivers(path)
+
+
+# --------------------------------------------------------------------------- #
+# remove_waivers — the shared write-back for --prune-waivers and the panel un-waive
+# --------------------------------------------------------------------------- #
+def test_remove_waivers_drops_by_id_and_rewrites(tmp_path):
+    path = tmp_path / "return-path.waivers.toml"
+    path.write_text(dump_waivers([Waiver(id="a", reason="x"), Waiver(id="b", reason="y")]))
+    assert remove_waivers(path, {"b"}) == 1
+    assert [w.id for w in load_waivers(path)] == ["a"]  # only 'b' gone; 'a' intact
+
+
+def test_remove_waivers_is_a_noop_when_nothing_matches(tmp_path):
+    path = tmp_path / "return-path.waivers.toml"
+    path.write_text(dump_waivers([Waiver(id="a", reason="x")]))
+    before = path.read_text()
+    assert remove_waivers(path, {"nope"}) == 0
+    assert path.read_text() == before  # untouched — no pointless rewrite
+
+
+def test_remove_waivers_is_a_noop_for_a_missing_file(tmp_path):
+    assert remove_waivers(tmp_path / "return-path.waivers.toml", {"a"}) == 0
 
 
 # --------------------------------------------------------------------------- #
