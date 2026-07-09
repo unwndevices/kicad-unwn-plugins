@@ -18,8 +18,9 @@ from pathlib import Path
 
 from . import __version__
 from .config import ConfigError, build_config
-from .detector import Finding, check_return_path
-from .parser import Board, ParserContractError, parse_board
+from .detector import Finding
+from .engine import analyze_board
+from .parser import Board, ParserContractError
 from .report import FORMAT_EXT, REPORT_FORMATS, SEVERITY_ORDER, render_report
 from .waivers import (
     WAIVERS_FILENAME,
@@ -34,7 +35,6 @@ from .waivers import (
     today_stamp,
     waiver_for,
     waiver_from_hash,
-    with_ids,
 )
 
 
@@ -63,25 +63,14 @@ def _check(args: argparse.Namespace) -> int:
         print(f"error: {exc}", flush=True)
         return 2
 
-    reference_nets = config.reference_nets
-    min_pour_area = config.for_net().min_pour_area_mm2
     try:
-        board = parse_board(text, reference_nets, min_pour_area_mm2=min_pour_area)
+        board, findings = analyze_board(text, config=config)
     except ParserContractError as exc:
         print(f"error: {board_path.name}: {exc}", flush=True)
         return 2
     except (ValueError, IndexError) as exc:
         print(f"error: {board_path.name}: could not parse board: {exc}", flush=True)
         return 2
-
-    findings = with_ids(
-        check_return_path(
-            board,
-            reference_nets=reference_nets,
-            config=config,
-            net_to_netclass=board.net_classes,
-        )
-    )
 
     waiver_path: Path | None
     try:
