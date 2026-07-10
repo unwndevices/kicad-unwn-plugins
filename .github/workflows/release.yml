@@ -185,7 +185,14 @@ jobs:
     name: deploy PCM repository to Pages
     # After the release: the repository index advertises the release-asset URL,
     # which only resolves once the release is published.
+    #
+    # `always() && needs.release.result == 'success'`, not the default `success()`:
+    # GitHub's `success()` is evaluated over the *whole* transitive needs graph, and
+    # release depends on `binaries`, which is skipped for any tool without standalone
+    # binaries (returnpath and future non-GUI tools). A skipped ancestor makes the
+    # default gate false, silently skipping this deploy — so gate on release alone.
     needs: [release]
+    if: ${{ always() && needs.release.result == 'success' }}
     runs-on: ubuntu-latest
     permissions:
       pages: write
