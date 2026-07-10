@@ -202,10 +202,13 @@ def test_no_waivers_flag_ignores_the_sidecar(tmp_path, capsys):
     assert main(["check", str(board), "--no-waivers"]) == 1
 
 
-def test_waive_flag_appends_stamped_entry(tmp_path, capsys):
+def test_waive_flag_appends_stamped_entry(tmp_path, capsys, monkeypatch):
     board = tmp_path / "board.kicad_pcb"
     board.write_text(SPLIT_BOARD.read_text())
     fid = _split_error().id
+    # Pin the author stamp so the assertion doesn't depend on ambient git
+    # user.name (unset on CI runners → git_author() returns "" by design).
+    monkeypatch.setattr("returnpath.cli.git_author", lambda: "Test Author")
     # AC3: --waive appends an entry with auto-stamped author + date; exit 0 (now waived).
     assert main(["check", str(board), "--waive", fid, "--reason", "crosses moat by design"]) == 0
 
@@ -214,7 +217,7 @@ def test_waive_flag_appends_stamped_entry(tmp_path, capsys):
     (entry,) = load_waivers(sidecar)
     assert entry.id == fid
     assert entry.reason == "crosses moat by design"
-    assert entry.author  # git user.name auto-stamp
+    assert entry.author == "Test Author"  # git user.name auto-stamp
     assert entry.date  # ISO date auto-stamp
 
 
