@@ -266,8 +266,14 @@ def test_merge_upserts_and_sorts():
 
 
 def test_merge_replaces_same_identifier():
-    old = {"identifier": "com.github.unwndevices.kicad-captouch", "versions": [{"version": "0.0.1"}]}
-    new = {"identifier": "com.github.unwndevices.kicad-captouch", "versions": [{"version": "0.2.0"}]}
+    old = {
+        "identifier": "com.github.unwndevices.kicad-captouch",
+        "versions": [{"version": "0.0.1"}],
+    }
+    new = {
+        "identifier": "com.github.unwndevices.kicad-captouch",
+        "versions": [{"version": "0.2.0"}],
+    }
     merged = build_pcm._merge_packages([old], new)
     assert merged == [new]  # the bump replaces the prior entry, no duplicate
 
