@@ -193,6 +193,100 @@ def test_build_honours_an_arbitrary_tool_spec(tmp_path):
 
 
 def test_cli_tool_flag_builds_selected_tool(tmp_path):
-    rc = build_pcm.main(["--version", VERSION, "--tool", "captouch", "--outdir", str(tmp_path)])
+    # --no-merge keeps the build offline: without it main() fetches the live index.
+    rc = build_pcm.main(
+        ["--version", VERSION, "--tool", "captouch", "--outdir", str(tmp_path), "--no-merge"]
+    )
     assert rc == 0
     assert (tmp_path / "kicad-captouch-pcm-0.1.0.zip").exists()
+
+
+# ---- shared-index merge (#15) ----------------------------------------------
+
+
+def _other_tool_entry() -> dict:
+    """A stand-in for a tool already published in the shared index."""
+    return {
+        "$schema": "https://go.kicad.org/pcm/schemas/v2",
+        "name": "Other Tool",
+        "description": "an already-published tool",
+        "description_full": "an already-published tool",
+        "identifier": "com.github.unwndevices.kicad-other",
+        "type": "plugin",
+        "author": {"name": build_pcm.MAINTAINER, "contact": {"web": "https://example.invalid"}},
+        "license": "GPL-3.0-or-later",
+        "resources": {"GitHub": "https://example.invalid"},
+        "versions": [
+            {
+                "version": "9.9.9",
+                "status": "stable",
+                "kicad_version": "9.0",
+                "runtime": "ipc",
+                "download_url": "https://example.invalid/other.zip",
+                "download_sha256": "0" * 64,
+                "download_size": 1,
+                "install_size": 1,
+            }
+        ],
+    }
+
+
+def test_merge_upserts_and_sorts():
+    other = _other_tool_entry()
+    entry = {"identifier": "com.github.unwndevices.kicad-captouch", "name": "cap"}
+    merged = build_pcm._merge_packages([other], entry)
+    idents = [p["identifier"] for p in merged]
+    assert idents == sorted(idents)
+    assert other in merged and entry in merged
+
+
+def test_merge_replaces_same_identifier():
+    old = {"identifier": "com.github.unwndevices.kicad-captouch", "versions": [{"version": "0.0.1"}]}
+    new = {"identifier": "com.github.unwndevices.kicad-captouch", "versions": [{"version": "0.2.0"}]}
+    merged = build_pcm._merge_packages([old], new)
+    assert merged == [new]  # the bump replaces the prior entry, no duplicate
+
+
+def test_build_carries_other_tools_into_the_index(tmp_path, schema):
+    """Releasing captouch must not drop a tool already in the shared index."""
+    other = _other_tool_entry()
+    res = build_pcm.build(
+        version=VERSION,
+        tag=TAG,
+        repo_slug="unwndevices/kicad-unwn-plugins",
+        pages_url="https://unwndevices.github.io/kicad-unwn-plugins",
+        plugin_dir=PLUGIN_DIR,
+        outdir=tmp_path,
+        timestamp=1_700_000_000,
+        existing_packages=[other],
+    )
+    packages = json.loads(res["packages_json"].read_text())
+    build_pcm._validate(packages, "PackageArray", schema)
+    idents = {p["identifier"] for p in packages["packages"]}
+    assert idents == {other["identifier"], build_pcm.IDENTIFIER}
+    # resources.zip carries an icon for every tool in the merged index.
+    with zipfile.ZipFile(res["resources_zip"]) as zf:
+        names = set(zf.namelist())
+    assert f"{other['identifier']}/icon.png" in names
+    assert f"{build_pcm.IDENTIFIER}/icon.png" in names
+
+
+def test_fetch_published_packages_treats_404_as_empty(monkeypatch):
+    import urllib.error
+
+    def boom(url):
+        raise urllib.error.HTTPError(url, 404, "Not Found", {}, None)
+
+    monkeypatch.setattr(build_pcm.urllib.request, "urlopen", boom)
+    assert build_pcm._fetch_published_packages("https://example.invalid/packages.json") == []
+
+
+def test_fetch_published_packages_reraises_other_errors(monkeypatch):
+    import urllib.error
+
+    def boom(url):
+        raise urllib.error.HTTPError(url, 500, "Server Error", {}, None)
+
+    monkeypatch.setattr(build_pcm.urllib.request, "urlopen", boom)
+    with pytest.raises(urllib.error.HTTPError):
+        build_pcm._fetch_published_packages("https://example.invalid/packages.json")

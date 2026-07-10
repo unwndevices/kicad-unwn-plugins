@@ -10,7 +10,8 @@ From the selected tool's plugin bundle in ``plugins/<tool>/`` this produces:
 * ``<outdir>/<archive>.zip``         the installable PCM package (``metadata.json`` +
                                      ``plugins/`` + ``resources/icon.png``) — what a
                                      user picks via *Manage Plugins → Install from File*.
-* ``<outdir>/repo/packages.json``    the repository package index (carries ``download_*``).
+* ``<outdir>/repo/packages.json``    the repository package index (carries ``download_*``)
+                                     for *every* published tool, not just this one.
 * ``<outdir>/repo/repository.json``  the descriptor a user adds as a PCM repository URL
                                      to get install + automatic update notifications.
 * ``<outdir>/repo/resources.zip``    per-package icons for the PCM browse UI.
@@ -23,7 +24,11 @@ Three things make the output correct rather than merely plausible:
   managed venv installs the exact released ``kicad-captouch`` (not a moving ``main``);
 * every emitted JSON is validated against the vendored KiCad PCM v2 schema before
   it is written, so an invalid package fails the build instead of failing silently
-  inside KiCad.
+  inside KiCad;
+* the index is a *shared* one — each per-tool release upserts its own entry into the
+  index already published on Pages, so releasing one tool never drops the others (a
+  single release only knows its own ``download_*``, so the others must be carried
+  through, not regenerated).
 
 The zip is built deterministically (sorted entries, fixed timestamps) so the same
 inputs yield a byte-identical archive and a stable ``download_sha256``.
@@ -36,6 +41,8 @@ import hashlib
 import json
 import os
 import shutil
+import urllib.error
+import urllib.request
 import zipfile
 from dataclasses import dataclass
 from pathlib import Path
@@ -273,6 +280,44 @@ def _dir_size(path: Path) -> int:
     return sum(p.stat().st_size for p in path.rglob("*") if p.is_file())
 
 
+def _fetch_published_packages(index_url: str) -> list[dict]:
+    """Return the ``packages`` array already published at *index_url*.
+
+    The shared index must survive a per-tool release: a single release carries only
+    its own ``download_*``, so the other tools' entries have to be read back from the
+    live ``packages.json`` and preserved. A ``404`` means nothing has been published
+    yet (the first-ever release) — start from an empty list. Any *other* failure is
+    deliberately left to propagate: silently starting from empty on a transient error
+    would clobber every already-published tool, which is exactly the bug this avoids.
+    """
+    try:
+        with urllib.request.urlopen(index_url) as resp:  # noqa: S310 — fixed https index URL
+            payload = json.loads(resp.read().decode("utf-8"))
+    except urllib.error.HTTPError as exc:
+        if exc.code == 404:
+            return []
+        raise
+    packages = payload.get("packages", [])
+    if not isinstance(packages, list):
+        raise ValueError(f"{index_url} has a non-list 'packages' field")
+    return packages
+
+
+def _merge_packages(existing: list[dict], entry: dict) -> list[dict]:
+    """Upsert *entry* into *existing* by identifier, returning a sorted list.
+
+    The tool being released replaces any prior entry with the same identifier (a
+    version bump), and every other tool is carried through untouched. Sorting by
+    identifier keeps the emitted index byte-stable no matter which tool triggered
+    the build.
+    """
+    ident = entry["identifier"]
+    merged = [p for p in existing if p.get("identifier") != ident]
+    merged.append(entry)
+    merged.sort(key=lambda p: p["identifier"])
+    return merged
+
+
 def build(
     *,
     version: str,
@@ -283,8 +328,15 @@ def build(
     outdir: Path,
     timestamp: int,
     tool: ToolSpec = TOOLS["captouch"],
+    existing_packages: list[dict] | None = None,
 ) -> dict:
-    """Build the package archive and the repository index. Returns the artifact paths."""
+    """Build the package archive and the repository index. Returns the artifact paths.
+
+    *existing_packages* is the ``packages`` array already published in the shared
+    index; this tool is upserted into it so a per-tool release keeps every other
+    tool. ``None`` (the default) builds a single-tool index — the first-ever release,
+    or a caller that has nothing to merge.
+    """
     schema = _load_schema()
     outdir = outdir.resolve()
     staging = outdir / "_staging"
@@ -325,17 +377,21 @@ def build(
             "install_size": install_size,
         },
     )
-    packages = {"$schema": "https://go.kicad.org/pcm/schemas/v2", "packages": [repo_meta]}
+    merged = _merge_packages(existing_packages or [], repo_meta)
+    packages = {"$schema": "https://go.kicad.org/pcm/schemas/v2", "packages": merged}
     _validate(packages, "PackageArray", schema)
     (repo_dir / "packages.json").write_text(json.dumps(packages, indent=2) + "\n", encoding="utf-8")
 
-    # 4. resources.zip — icons keyed by identifier, for the PCM browse UI
+    # 4. resources.zip — icons keyed by identifier, for the PCM browse UI. It covers
+    #    every tool in the merged index (not just the one released), so browsing shows
+    #    an icon for each. All tools share the same PCM icon, keyed by identifier.
     resources_zip = repo_dir / "resources.zip"
     res_staging = outdir / "_resources"
     if res_staging.exists():
         shutil.rmtree(res_staging)
-    (res_staging / tool.identifier).mkdir(parents=True)
-    shutil.copy2(PCM_ICON, res_staging / tool.identifier / "icon.png")
+    for ident in sorted({p["identifier"] for p in merged}):
+        (res_staging / ident).mkdir(parents=True)
+        shutil.copy2(PCM_ICON, res_staging / ident / "icon.png")
     _write_zip(res_staging, resources_zip)
 
     # 5. repository.json — the shared index URL a user adds to the PCM (repo-wide,
@@ -391,6 +447,17 @@ def main(argv: list[str] | None = None) -> int:
         help="base URL hosting the repository index (default: https://<owner>.github.io/<name>)",
     )
     parser.add_argument(
+        "--base-index-url",
+        help="URL of the live packages.json to merge this tool into "
+        "(default: <pages-url>/packages.json). A 404 there is treated as an empty index.",
+    )
+    parser.add_argument(
+        "--no-merge",
+        action="store_true",
+        help="emit a single-tool index instead of upserting into the published one "
+        "(use for the first-ever release or an offline build)",
+    )
+    parser.add_argument(
         "--plugin-dir",
         type=Path,
         help="plugin bundle dir (default: plugins/<tool subdir>)",
@@ -410,6 +477,14 @@ def main(argv: list[str] | None = None) -> int:
     owner, _, name = args.repo.partition("/")
     pages_url = args.pages_url or f"https://{owner}.github.io/{name}"
 
+    if args.no_merge:
+        existing_packages = None
+    else:
+        index_url = args.base_index_url or f"{pages_url.rstrip('/')}/packages.json"
+        existing_packages = _fetch_published_packages(index_url)
+        carried = [p["identifier"] for p in existing_packages if p.get("identifier") != tool.identifier]
+        print(f"merging into published index ({len(carried)} other tool(s) carried through)")
+
     result = build(
         version=args.version,
         tag=tag,
@@ -419,6 +494,7 @@ def main(argv: list[str] | None = None) -> int:
         outdir=args.outdir,
         timestamp=args.timestamp,
         tool=tool,
+        existing_packages=existing_packages,
     )
     print(f"package:  {result['archive']}")
     print(f"  sha256: {result['download_sha256']}")
