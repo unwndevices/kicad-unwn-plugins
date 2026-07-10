@@ -21,9 +21,13 @@ name: release
 #      gh api -X POST repos/<owner>/<repo>/environments/github-pages/deployment-branch-policies \
 #        -f name='*-v*' -f type='tag'
 #  * PyPI — register this repo as a Trusted Publisher for each tool's PyPI
-#    project (pypi.org → project → Publishing): workflow `release.yml`,
-#    environment `pypi`. No API token is stored; publishing uses short-lived
-#    OIDC credentials, so it only works once the project's publisher is added.
+#    project (pypi.org → Publishing): owner `unwndevices`, repo
+#    `kicad-unwn-plugins`, workflow `release.yml`, environment `pypi-<tool>`
+#    (e.g. `pypi-core`, `pypi-returnpath`, `pypi-captouch`). The per-tool
+#    environment matters: PyPI rejects two *pending* publishers that share
+#    (owner, repo, workflow, environment), so a shared `pypi` lets only one be
+#    pre-registered. No API token is stored; publishing uses short-lived OIDC
+#    credentials, so it only works once the project's publisher is added.
 on:
   push:
     tags: ["*-v*"] # <tool>-vX.Y.Z — captouch-v*, core-v*, returnpath-v*
@@ -110,7 +114,12 @@ jobs:
     name: publish to PyPI
     needs: setup
     runs-on: ubuntu-latest
-    environment: pypi
+    # Per-tool environment so each package's PyPI trusted publisher is a distinct
+    # config. PyPI keys a *pending* publisher on (owner, repo, workflow, environment)
+    # and rejects two pending publishers that share it — a shared `pypi` environment
+    # would let only ONE of core/returnpath/captouch be pre-registered. `pypi-<tool>`
+    # makes them independent, so all can be registered up front.
+    environment: pypi-${{ needs.setup.outputs.tool }}
     permissions:
       id-token: write # trusted publishing (OIDC) — no stored token
     steps:
