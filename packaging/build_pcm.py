@@ -20,8 +20,11 @@ Three things make the output correct rather than merely plausible:
 
 * the package archive omits the ``download_*`` keys — per the PCM spec they belong
   *only* in the repository copy, never in the archive's own ``metadata.json``;
-* the bundled ``requirements.txt`` is pinned to the released tag, so the plugin's
-  managed venv installs the exact released ``kicad-captouch`` (not a moving ``main``);
+* the bundled ``requirements.txt`` pins the tool's own PyPI distribution to the
+  released version, so the plugin's managed venv installs the exact released wheel
+  (KiCad builds that venv with ``pip --only-binary :all:``, so every dependency must
+  be a pre-built wheel — a source archive cannot be built and the plugin's actions
+  then never appear in the UI);
 * every emitted JSON is validated against the vendored KiCad PCM v2 schema before
   it is written, so an invalid package fails the build instead of failing silently
   inside KiCad;
@@ -40,6 +43,7 @@ import argparse
 import hashlib
 import json
 import os
+import re
 import shutil
 import urllib.error
 import urllib.request
@@ -200,16 +204,30 @@ def _validate(instance: object, definition: str, schema: dict) -> None:
     jsonschema.validate(instance=instance, schema=sub)
 
 
-def _pin_requirements(text: str, tag: str) -> str:
-    """Pin the GitHub-zip dependency from the moving ``main`` branch to *tag*."""
-    moving = "archive/refs/heads/main.zip"
-    pinned = f"archive/refs/tags/{tag}.zip"
-    if moving not in text:
+def _pin_requirements(text: str, package_name: str, version: str) -> str:
+    """Pin the tool's own distribution (*package_name*) to the released *version*.
+
+    KiCad builds the plugin venv with ``pip install --only-binary :all:`` (see
+    KiCad's plugin environment manager), so *every* dependency must resolve to a
+    pre-built wheel — a GitHub source archive or sdist cannot be built and the
+    plugin's actions then never appear in the UI. The tool's own package is therefore
+    installed from PyPI, pinned here to the exact released version so the venv gets
+    the matching wheel rather than a floating latest. Third-party lines (kicad-python,
+    shapely, …) already resolve to wheels and are left untouched.
+
+    The source requirements.txt carries the tool's package as a bare name (optionally
+    with an extras group, e.g. ``kicad-captouch[gui]``); this appends ``==version``.
+    """
+    pattern = re.compile(
+        rf"^(?P<spec>{re.escape(package_name)}(?:\[[^\]]+\])?)[ \t]*$",
+        re.MULTILINE,
+    )
+    if not pattern.search(text):
         raise ValueError(
-            f"requirements.txt does not reference {moving!r}; cannot pin to {tag}. "
-            "Update build_pcm.py if the dependency line changed."
+            f"requirements.txt has no bare {package_name!r} line to pin to {version}. "
+            "Update build_pcm.py if the plugin's own dependency line changed."
         )
-    return text.replace(moving, pinned)
+    return pattern.sub(rf"\g<spec>=={version}", text)
 
 
 def _package_metadata(
@@ -245,7 +263,7 @@ def _package_metadata(
     }
 
 
-def _stage_plugins(plugin_dir: Path, dest_plugins: Path, tag: str) -> None:
+def _stage_plugins(plugin_dir: Path, dest_plugins: Path, package_name: str, version: str) -> None:
     dest_plugins.mkdir(parents=True, exist_ok=True)
     for name in _PLUGIN_FILES:
         src = plugin_dir / name
@@ -253,7 +271,8 @@ def _stage_plugins(plugin_dir: Path, dest_plugins: Path, tag: str) -> None:
             raise FileNotFoundError(f"plugin bundle is missing {name}: {src}")
         if name == "requirements.txt":
             (dest_plugins / name).write_text(
-                _pin_requirements(src.read_text(encoding="utf-8"), tag), encoding="utf-8"
+                _pin_requirements(src.read_text(encoding="utf-8"), package_name, version),
+                encoding="utf-8",
             )
         else:
             shutil.copy2(src, dest_plugins / name)
@@ -346,7 +365,7 @@ def build(
     (staging / "resources").mkdir(parents=True)
 
     # 1. assemble the package tree
-    _stage_plugins(plugin_dir, staging / "plugins", tag)
+    _stage_plugins(plugin_dir, staging / "plugins", tool.package_name, version)
     shutil.copy2(PCM_ICON, staging / "resources" / "icon.png")
 
     archive_meta = _package_metadata(tool, version, repo_slug, with_download=None)

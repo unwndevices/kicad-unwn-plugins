@@ -89,10 +89,14 @@ def test_archive_metadata_is_schema_valid_without_download_keys(artifacts, schem
     assert "install_size" not in ver
 
 
-def test_requirements_pinned_to_tag(artifacts):
+def test_requirements_pin_the_tool_wheel_to_version(artifacts):
     reqs = _read_in_zip(artifacts["archive"], "plugins/requirements.txt").decode()
-    assert f"archive/refs/tags/{TAG}.zip" in reqs
-    assert "heads/main.zip" not in reqs
+    # The tool's own distribution is pinned to the released version as a PyPI wheel;
+    # KiCad installs the venv with --only-binary :all:, so no source archives allowed.
+    assert f"kicad-captouch[gui]=={VERSION}" in reqs
+    assert "archive/refs" not in reqs and ".zip" not in reqs
+    # Third-party deps are left untouched (not pinned by the build).
+    assert "kicad-python>=0.5" in reqs
 
 
 def test_packages_json_has_matching_download_metadata(artifacts, schema):
@@ -131,9 +135,22 @@ def test_build_is_deterministic(tmp_path):
     assert once("a") == once("b")
 
 
-def test_pin_requirements_rejects_missing_marker():
+def test_pin_requirements_appends_version_and_keeps_extras():
+    out = build_pcm._pin_requirements(
+        "kicad-python==0.7.1\nkicad-returnpath\n", "kicad-returnpath", "1.2.3"
+    )
+    assert "kicad-returnpath==1.2.3" in out
+    assert "kicad-python==0.7.1" in out  # third-party line untouched
+
+
+def test_pin_requirements_preserves_extras_group():
+    out = build_pcm._pin_requirements("kicad-captouch[gui]\n", "kicad-captouch", "0.4.0")
+    assert "kicad-captouch[gui]==0.4.0" in out
+
+
+def test_pin_requirements_rejects_missing_package_line():
     with pytest.raises(ValueError):
-        build_pcm._pin_requirements("kicad-python>=0.5\n", TAG)
+        build_pcm._pin_requirements("kicad-python>=0.5\n", "kicad-returnpath", "0.1.0")
 
 
 # ---- per-tool generalization (#15) -----------------------------------------
@@ -170,16 +187,24 @@ def test_build_honours_an_arbitrary_tool_spec(tmp_path):
         display_name="Demo Tool",
         description="short",
         description_full="full",
-        plugin_subdir="captouch",
+        plugin_subdir="demo",
         package_name="kicad-demo",
     )
+    # Stage a bundle whose requirements.txt names this tool's own package, so the
+    # build's version pin has a matching line to rewrite.
+    plugin_dir = tmp_path / "bundle"
+    plugin_dir.mkdir()
+    for f in PLUGIN_DIR.iterdir():
+        if f.name != "requirements.txt":
+            (plugin_dir / f.name).write_bytes(f.read_bytes())
+    (plugin_dir / "requirements.txt").write_text("kicad-python>=0.5\nkicad-demo\n")
     res = build_pcm.build(
         version=VERSION,
         tag="demo-v0.1.0",
         repo_slug="unwndevices/kicad-unwn-plugins",
         pages_url="https://unwndevices.github.io/kicad-unwn-plugins",
-        plugin_dir=PLUGIN_DIR,
-        outdir=tmp_path,
+        plugin_dir=plugin_dir,
+        outdir=tmp_path / "out",
         timestamp=1_700_000_000,
         tool=spec,
     )

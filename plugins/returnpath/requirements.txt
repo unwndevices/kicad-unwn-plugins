@@ -1,14 +1,18 @@
 # Dependencies KiCad installs into the plugin's managed virtualenv.
 #
-# kicad-python (kipy) is the stable IPC client used to reach the running KiCad, read the
-# live board (Board.get_as_string()), and draw the findings back. It is PINNED to 0.7.1:
-# that wheel ships broken kipy.board_rules / kipy.schematic_types modules, which the
-# plugin avoids importing — but a different version could shift the API surface the
-# marker/overlay/selection surfacing relies on (spec §9).
+# KiCad builds this venv with `pip install --only-binary :all:`, so EVERY dependency
+# must resolve to a pre-built wheel — pip is forbidden from building anything from
+# source. A GitHub source archive (or sdist) therefore cannot be used here: it would
+# fail to install and the plugin's actions would silently never appear in the KiCad
+# UI. Every line below must be a package with wheels on PyPI.
 #
-# The checker itself ships as kicad-returnpath. It is not on PyPI yet, so it is installed
-# straight from the GitHub repository as a plain zip (no git client required). If KiCad
-# ever fails to build the plugin venv, this line is the first thing to check. The PCM
-# build pins this URL to the released tag for reproducible plugin-venv builds.
+# kicad-python (kipy) is the stable IPC client used to reach the running KiCad, read
+# the live board (Board.get_as_string()), and draw the findings back. Pinned to 0.7.1
+# for a stable API surface (spec §9).
+#
+# kicad-returnpath is the checker itself; it pulls in kicad-core and shapely as wheels
+# from PyPI. The PCM build pins this line to the exact released version so the venv
+# installs the matching wheel. If KiCad ever fails to build the plugin venv, check
+# that kicad-returnpath (and kicad-core) are published to PyPI as wheels.
 kicad-python==0.7.1
-kicad-returnpath @ https://github.com/unwndevices/kicad-unwn-plugins/archive/refs/heads/main.zip
+kicad-returnpath

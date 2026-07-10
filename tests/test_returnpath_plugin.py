@@ -307,7 +307,11 @@ def test_trace_for_finding_none_when_net_has_no_copper():
 def test_requirements_pin_kicad_python_0_7_1():
     reqs = (BUNDLE / "requirements.txt").read_text(encoding="utf-8")
     assert "kicad-python==0.7.1" in reqs
-    assert "kicad-returnpath @" in reqs  # the checker core is a plugin-venv dependency
+    # The checker core is a plugin-venv dependency, installed as a PyPI wheel (KiCad's
+    # venv uses pip --only-binary :all:, so no source archives). The PCM build appends
+    # the released ==version; the source bundle carries it bare.
+    assert re.search(r"^kicad-returnpath\b", reqs, re.MULTILINE)
+    assert "archive/refs" not in reqs
 
 
 def test_plugin_avoids_the_broken_kipy_imports():

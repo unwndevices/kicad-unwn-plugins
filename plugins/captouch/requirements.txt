@@ -1,12 +1,15 @@
 # Dependencies KiCad installs into the plugin's managed virtualenv.
 #
+# KiCad builds this venv with `pip install --only-binary :all:`, so EVERY dependency
+# must resolve to a pre-built wheel — pip is forbidden from building anything from
+# source. A GitHub source archive (or sdist) therefore cannot be used here: it would
+# fail to install and the plugin's actions would silently never appear in the KiCad
+# UI. Every line below must be a package with wheels on PyPI.
+#
 # kicad-python (kipy) is the stable IPC client used to reach the running KiCad and
 # find the open board's project. The generator itself ships as kicad-captouch; the
-# [gui] extra pulls in PySide6 for the live-preview design window.
-#
-# kicad-captouch is not on PyPI yet, so it is installed straight from the GitHub
-# repository as a plain zip (no git client required). If KiCad ever fails to build
-# the plugin venv, this line is the first thing to check. Pin the URL to a release
-# tag or commit SHA once one exists, for reproducible plugin-venv builds.
+# [gui] extra pulls in PySide6 (wheels on PyPI) for the live-preview design window,
+# and kicad-captouch pulls in kicad-core and shapely as wheels. The PCM build pins
+# this line to the exact released version so the venv installs the matching wheel.
 kicad-python>=0.5
-kicad-captouch[gui] @ https://github.com/unwndevices/kicad-unwn-plugins/archive/refs/heads/main.zip
+kicad-captouch[gui]
