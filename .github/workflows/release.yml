@@ -79,7 +79,7 @@ jobs:
     if: contains(fromJSON('["captouch", "returnpath"]'), needs.setup.outputs.tool)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - uses: actions/setup-python@v5
         with:
@@ -123,7 +123,7 @@ jobs:
     permissions:
       id-token: write # trusted publishing (OIDC) — no stored token
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - uses: actions/setup-python@v5
         with:
