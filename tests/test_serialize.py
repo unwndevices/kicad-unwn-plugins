@@ -8,6 +8,8 @@ from captouch.params import (
     SLIDER_PRESETS,
     TRACKPAD_PRESETS,
     WHEEL_PRESETS,
+    ButtonParams,
+    KeypadParams,
     SliderParams,
     TrackpadParams,
     WheelParams,
@@ -22,6 +24,8 @@ _ALL_PRESETS = [
     SliderParams(),
     WheelParams(),
     TrackpadParams(),
+    KeypadParams(),
+    ButtonParams(),
 ]
 
 

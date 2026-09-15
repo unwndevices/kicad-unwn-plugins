@@ -16,6 +16,7 @@ from kicad_core.sexpr import Sym
 
 from .. import __version__
 from ..geometry import (
+    ButtonGeometry,
     KeypadGeometry,
     SliderGeometry,
     TrackpadGeometry,
@@ -24,7 +25,9 @@ from ..geometry import (
 )
 from ..params import recommended_series_r
 
-WidgetGeometry = Union[SliderGeometry, WheelGeometry, TrackpadGeometry, KeypadGeometry]
+WidgetGeometry = Union[
+    SliderGeometry, WheelGeometry, TrackpadGeometry, KeypadGeometry, ButtonGeometry
+]
 
 # KiCad 9.0 .kicad_sym S-expression format version (date token).
 SYMBOL_LIB_VERSION = 20241209
@@ -324,6 +327,20 @@ def keypad_symbol_lib(geo: KeypadGeometry) -> list:
 
 def keypad_symbol_lib_text(geo: KeypadGeometry) -> str:
     """Serialise a keypad symbol library to `.kicad_sym` text (trailing newline)."""
+    return widget_symbol_lib_text(geo)
+
+
+def button_symbol(geo: ButtonGeometry) -> list:
+    """Build a button symbol — ``BTN`` plus optional ``GND`` hat (see :func:`widget_symbol`)."""
+    return widget_symbol(geo)
+
+
+def button_symbol_lib(geo: ButtonGeometry) -> list:
+    return _lib(widget_symbol(geo))
+
+
+def button_symbol_lib_text(geo: ButtonGeometry) -> str:
+    """Serialise a button symbol library to `.kicad_sym` text (trailing newline)."""
     return widget_symbol_lib_text(geo)
 
 

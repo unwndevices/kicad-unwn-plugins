@@ -34,7 +34,9 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass
+from typing import Union
 
+from .button import ButtonParams
 from .keypad import BUTTON_GAP_MM, KeypadParams
 from .mutual_slider import MutualSliderParams
 from .sensing import has_overlay
@@ -100,7 +102,9 @@ class Advisory:
     blocks: bool = False
 
 
-WidgetParams = SliderParams | WheelParams | TrackpadParams | MutualSliderParams | KeypadParams
+WidgetParams = Union[
+    SliderParams, WheelParams, TrackpadParams, MutualSliderParams, KeypadParams, ButtonParams
+]
 
 
 # --------------------------------------------------------------------------- #
@@ -231,21 +235,25 @@ def _wheel_spiral_advisory(params: WheelParams) -> Advisory | None:
     )
 
 
-def _keypad_size_advisory(params: KeypadParams) -> Advisory | None:
+def _overlay_size_advisory(size: float, overlay: float) -> Advisory | None:
     """Self-cap button dimension vs ``3 × overlay`` (TI rule; §5.7)."""
-    need = BUTTON_OVERLAY_SIZE_FACTOR * params.overlay_thickness
-    if params.button_size >= need:
+    need = BUTTON_OVERLAY_SIZE_FACTOR * overlay
+    if size >= need:
         return None
     return Advisory(
         feature="button vs overlay sizing",
         message=(
-            f"button size {params.button_size:.2f} mm is below the "
+            f"button size {size:.2f} mm is below the "
             f"{BUTTON_OVERLAY_SIZE_FACTOR:.0f} × overlay minimum {need:.2f} mm "
-            f"(overlay {params.overlay_thickness:.2f} mm; TI rule of thumb, guidelines §5.7) — "
+            f"(overlay {overlay:.2f} mm; TI rule of thumb, guidelines §5.7) — "
             f"enlarge the button or thin the overlay so a finger fully couples to it"
         ),
         blocks=True,
     )
+
+
+def _keypad_size_advisory(params: KeypadParams) -> Advisory | None:
+    return _overlay_size_advisory(params.button_size, params.overlay_thickness)
 
 
 def _keypad_separation_advisory(params: KeypadParams) -> Advisory | None:
@@ -263,6 +271,19 @@ def _keypad_separation_advisory(params: KeypadParams) -> Advisory | None:
         ),
         blocks=True,
     )
+
+
+def _button_size_advisory(params: ButtonParams) -> Advisory | None:
+    return _overlay_size_advisory(params.size, params.overlay_thickness)
+
+
+def _button_advisories(params: ButtonParams) -> list[Advisory]:
+    out: list[Advisory | None] = [_series_r_advisory(params)]
+    if has_overlay(params):
+        out.append(_button_size_advisory(params))
+        out.append(_sensitivity_note(params))
+    out.append(_cp_advisory(params, params.outline_area, CP_BUDGET_SELF_PF, "self-cap"))
+    return [a for a in out if a is not None]
 
 
 def _trackpad_overlay_advisory(params: TrackpadParams) -> Advisory | None:
@@ -338,6 +359,8 @@ def check_advisories(params: WidgetParams) -> list[Advisory]:
         return _trackpad_advisories(params.to_trackpad())
     if isinstance(params, KeypadParams):
         return _keypad_advisories(params)
+    if isinstance(params, ButtonParams):
+        return _button_advisories(params)
     if isinstance(params, WheelParams):
         # Shared self-cap items, plus the wheel-only spiral sliver guard (kept out
         # of _self_cap_advisories, which the slider also calls — the slider has no

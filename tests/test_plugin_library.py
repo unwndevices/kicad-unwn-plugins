@@ -15,6 +15,7 @@ from captouch import engine
 from captouch.export import symbol
 from captouch.kicad_plugin import library
 from captouch.params import (
+    ButtonParams,
     KeypadParams,
     MutualSliderParams,
     SliderParams,
@@ -29,6 +30,7 @@ _ALL_WIDGETS = [
     TrackpadParams(name="CT_Trackpad"),
     MutualSliderParams(name="CT_MutualSlider"),
     KeypadParams(name="CT_Keypad"),
+    ButtonParams(name="CT_Button"),
 ]
 
 

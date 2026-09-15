@@ -77,6 +77,12 @@ this poorly by default, so make it talk:
   `~/.cache/KiCad/<version>/…`, macOS `~/Library/Caches/KiCad/<version>/…`. Its pip
   log shows what failed. **Delete this folder and restart KiCad** to force a clean
   rebuild after editing `requirements.txt`.
+- **macOS + "No module named encodings" / custom interpreter.** KiCad 9/10 on macOS
+  bundles CPython **3.9.13**. This plugin's `min_version` is 3.9 so that interpreter
+  is enough — leave *Preferences → Plugins → Python interpreter* empty (KiCad's
+  own). Pointing it at Homebrew 3.10+ makes KiCad inject `PYTHONHOME` for 3.9 into
+  a newer venv and the plugin crashes. Reset the interpreter, delete the venv
+  folder above, and restart.
 
 See the [KiCad add-on developer docs](https://dev-docs.kicad.org/en/apis-and-binding/ipc-api/for-addon-developers/index.html)
 for the full debugging reference.
@@ -94,10 +100,7 @@ for the full debugging reference.
 
 1. Open your board in the KiCad PCB editor.
 2. **Tools → External Plugins → Capacitive-Touch Generator** (or the toolbar button).
-3. Design a slider / wheel / trackpad / mutual-slider / keypad with live preview.
-4. **Add to KiCad project** → confirm the destination (defaults to a project-local
-   `captouch` library; the footprint `.pretty` and symbol `.kicad_sym` can target
-   different libraries, and a *global* toggle installs to a personal library shared
-   across projects).
+3. Design a slider / wheel / trackpad / mutual-slider / keypad / button with live preview.
+4. **Add to KiCad project** → confirm the destination (defaults to sibling `../lib/captouch.*` when a `lib/` folder exists next to the project, else `<project>/libraries/captouch.*` — **not** the folder with the `.kicad_pro`). Footprint `.pretty` and symbol `.kicad_sym` can target different libraries; a *global* toggle installs to a personal library shared across projects.
 5. Back in the PCB editor, press **A** and pick `captouch:<name>` to place it; add
    the matching symbol from the `captouch` symbol library in the schematic.

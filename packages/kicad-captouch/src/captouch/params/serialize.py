@@ -1,6 +1,6 @@
 """JSON (de)serialisation of a widget parameter set.
 
-A saved file is ``{"widget": "slider"|"wheel"|"trackpad", "params": {…}}`` — the
+A saved file is ``{"widget": "slider"|"wheel"|"trackpad"|"mutual-slider"|"keypad"|"button", "params": {…}}`` — the
 ``widget`` tag lets a parameter set round-trip through the CLI and the GUI's
 widget switcher. Only known dataclass fields are read back, so a file written by
 a newer build still loads (unknown keys ignored, missing keys take defaults).
@@ -14,13 +14,16 @@ import json
 from dataclasses import asdict, fields
 from typing import Union
 
+from .button import ButtonParams
 from .keypad import KeypadParams
 from .mutual_slider import MutualSliderParams
 from .slider import SliderParams
 from .trackpad import TrackpadParams
 from .wheel import WheelParams
 
-WidgetParams = Union[SliderParams, WheelParams, TrackpadParams, MutualSliderParams, KeypadParams]
+WidgetParams = Union[
+    SliderParams, WheelParams, TrackpadParams, MutualSliderParams, KeypadParams, ButtonParams
+]
 
 _WIDGET_FOR_TYPE: dict[type, str] = {
     SliderParams: "slider",
@@ -28,6 +31,7 @@ _WIDGET_FOR_TYPE: dict[type, str] = {
     TrackpadParams: "trackpad",
     MutualSliderParams: "mutual-slider",
     KeypadParams: "keypad",
+    ButtonParams: "button",
 }
 _TYPE_FOR_WIDGET: dict[str, type[WidgetParams]] = {
     "slider": SliderParams,
@@ -35,6 +39,7 @@ _TYPE_FOR_WIDGET: dict[str, type[WidgetParams]] = {
     "trackpad": TrackpadParams,
     "mutual-slider": MutualSliderParams,
     "keypad": KeypadParams,
+    "button": ButtonParams,
 }
 
 

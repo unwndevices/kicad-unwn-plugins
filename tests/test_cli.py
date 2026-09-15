@@ -122,6 +122,42 @@ def test_wheel_spiral_shape_writes_both_files(tmp_path, capsys):
     assert (tmp_path / "SW.kicad_sym").exists()
 
 
+def test_wheel_follow_curve_writes_both_files(tmp_path, capsys):
+    rc = main(
+        [
+            "wheel",
+            "--out",
+            str(tmp_path),
+            "--name",
+            "AW",
+            "--shape",
+            "interdigitated",
+            "--teeth-follow-curve",
+            "--num-segments",
+            "3",
+            "--finger-diameter",
+            "16",
+            "--num-fingers",
+            "4",
+            "--tooth-depth",
+            "6",
+        ]
+    )
+    assert rc == 0
+    assert "interdigitated wheel" in capsys.readouterr().out
+    assert (tmp_path / "AW.kicad_mod").exists()
+    assert (tmp_path / "AW.kicad_sym").exists()
+
+
+def test_wheel_qt2120_preset_writes_both_files(tmp_path, capsys):
+    rc = main(["wheel", "--out", str(tmp_path), "--preset", "qt2120"])
+    assert rc == 0
+    out = capsys.readouterr().out
+    assert "interdigitated wheel" in out
+    assert (tmp_path / "CT_Wheel_QT2120.kicad_mod").exists()
+    assert (tmp_path / "CT_Wheel_QT2120.kicad_sym").exists()
+
+
 def _sliver_spiral_args(out):
     # A 70° twist on a narrow 2 mm ring pinches the outer corner well below the
     # 20° floor (~13°), so the spiral-sliver advisory blocks.
@@ -585,6 +621,79 @@ def test_keypad_strict_blocks_on_overlay_sizing(tmp_path, capsys):
     assert rc == 3
     assert "refusing to generate" in out
     assert not (tmp_path / "KP.kicad_mod").exists()
+
+
+# --------------------------------------------------------------------------- #
+# button
+# --------------------------------------------------------------------------- #
+def test_button_default_writes_files_and_exits_zero(tmp_path, capsys):
+    rc = main(["button", "--out", str(tmp_path), "--name", "BTN"])
+    assert rc == 0
+    assert (tmp_path / "BTN.kicad_mod").exists()
+    assert (tmp_path / "BTN.kicad_sym").exists()
+    out = capsys.readouterr().out
+    assert "radial button" in out and "560 Ω series resistor" in out
+
+
+def test_button_style_and_outline_flags(tmp_path, capsys):
+    rc = main(
+        [
+            "button",
+            "--out",
+            str(tmp_path),
+            "--name",
+            "BTN",
+            "--outline",
+            "square",
+            "--style",
+            "solid",
+            "--size",
+            "10",
+        ]
+    )
+    assert rc == 0
+    out = capsys.readouterr().out
+    assert "square solid button" in out
+
+
+def test_button_list_presets(capsys):
+    rc = main(["button", "--list-presets"])
+    assert rc == 0
+    out = capsys.readouterr().out
+    assert "snowflake" in out and "comb" in out and "hatch" in out
+
+
+def test_button_save_and_from_params_round_trip(tmp_path):
+    pj = tmp_path / "btn.json"
+    main(
+        ["button", "--out", str(tmp_path / "a"), "--preset", "snowflake", "--save-params", str(pj)]
+    )
+    assert '"widget": "button"' in pj.read_text()
+    assert main(["from-params", str(pj), "--out", str(tmp_path / "b")]) == 0
+    a = tmp_path / "a" / "CT_Button_Snowflake.kicad_mod"
+    b = tmp_path / "b" / "CT_Button_Snowflake.kicad_mod"
+    assert a.read_text() == b.read_text()
+
+
+def test_button_strict_blocks_on_overlay_sizing(tmp_path, capsys):
+    rc = main(
+        [
+            "button",
+            "--out",
+            str(tmp_path),
+            "--name",
+            "BTN",
+            "--size",
+            "5",
+            "--overlay-thickness",
+            "2",
+            "--strict",
+        ]
+    )
+    out = capsys.readouterr().out
+    assert rc == 3
+    assert "refusing to generate" in out
+    assert not (tmp_path / "BTN.kicad_mod").exists()
 
 
 # --------------------------------------------------------------------------- #

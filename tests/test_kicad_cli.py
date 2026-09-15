@@ -15,6 +15,7 @@ import pytest
 from _board import support_board_text, trackpad_net_map, widget_board_text
 from captouch.export import footprint, symbol
 from captouch.geometry import (
+    build_button,
     build_keypad,
     build_mutual_slider,
     build_slider,
@@ -24,6 +25,7 @@ from captouch.geometry import (
 )
 from captouch.params import (
     BUTTON_SHAPES,
+    ButtonParams,
     KeypadParams,
     MutualSliderParams,
     SliderParams,
@@ -402,6 +404,34 @@ def test_keypad_footprint_renders(shape, tmp_path):
     assert (svg_dir / "CT_Keypad.svg").exists()
 
 
+# --------------------------------------------------------------------------- #
+# button (single self-cap key)
+# --------------------------------------------------------------------------- #
+@pytest.mark.parametrize("outline", ["circle", "square"])
+@pytest.mark.parametrize("style", ["solid", "radial", "hatch"])
+def test_button_drc_clean(outline, style, tmp_path):
+    geo = build_button(ButtonParams(name="CT_Button", outline=outline, style=style))
+    board = tmp_path / "board.kicad_pcb"
+    board.write_text(widget_board_text(geo))
+    report = _drc(board, tmp_path / "drc.json")
+    assert report["violations"] == [], report["violations"]
+    assert report["unconnected_items"] == []
+
+
+def test_button_footprint_renders(tmp_path):
+    geo = build_button(ButtonParams(name="CT_Button", outline="circle", style="radial"))
+    pretty = tmp_path / "lib.pretty"
+    pretty.mkdir()
+    (pretty / "CT_Button.kicad_mod").write_text(footprint.button_footprint_text(geo))
+    svg_dir = tmp_path / "svg"
+    svg_dir.mkdir()
+    proc = _run(
+        "fp", "export", "svg", "--footprint", "CT_Button", "--output", str(svg_dir), str(pretty)
+    )
+    assert proc.returncode == 0 and "Error" not in proc.stdout, proc.stdout + proc.stderr
+    assert (svg_dir / "CT_Button.svg").exists()
+
+
 def test_keypad_drc_catches_undersized_gap(tmp_path):
     # Negative control: a sub-clearance button-to-button gap MUST be flagged,
     # proving the DRC gate is real and not vacuously passing on the spaced grid.
@@ -442,6 +472,11 @@ SUPPORT_CASES = [
         "keypad_both",
         build_keypad,
         KeypadParams(name="K", num_rows=2, num_cols=2, ground_hatch=True, guard_ring=True),
+    ),
+    (
+        "button_both",
+        build_button,
+        ButtonParams(name="B", ground_hatch=True, guard_ring=True),
     ),
     (
         "trackpad_both",

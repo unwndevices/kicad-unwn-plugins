@@ -16,6 +16,15 @@ from .advisory import (
     estimate_cp_pf,
     recommended_series_r,
 )
+from .button import (
+    BUTTON_HAT_STYLES,
+    BUTTON_OUTLINES,
+    BUTTON_PRESETS,
+    BUTTON_STYLES,
+    ButtonError,
+    ButtonParams,
+    validate_button,
+)
 from .device import (
     DEVICES,
     DeviceProfile,
@@ -108,6 +117,13 @@ __all__ = [
     "MUTUAL_SLIDER_PRESETS",
     "MIN_SEGMENTS",
     "MAX_SENSE_ROWS",
+    "ButtonParams",
+    "ButtonError",
+    "validate_button",
+    "BUTTON_PRESETS",
+    "BUTTON_OUTLINES",
+    "BUTTON_STYLES",
+    "BUTTON_HAT_STYLES",
     "KeypadParams",
     "KeypadError",
     "validate_keypad",

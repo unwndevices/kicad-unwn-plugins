@@ -13,6 +13,7 @@ import pytest
 
 from captouch.export import dxf
 from captouch.geometry import (
+    build_button,
     build_keypad,
     build_mutual_slider,
     build_slider,
@@ -20,6 +21,7 @@ from captouch.geometry import (
     build_wheel,
 )
 from captouch.params import (
+    ButtonParams,
     KeypadParams,
     MutualSliderParams,
     SliderParams,
@@ -134,6 +136,10 @@ def _keypad_circle():
     )
 
 
+def _button_circle():
+    return build_button(ButtonParams(name="CT_Button", outline="circle", style="radial"))
+
+
 # --------------------------------------------------------------------------- #
 # structure & header
 # --------------------------------------------------------------------------- #
@@ -225,6 +231,15 @@ def test_keypad_round_buttons_emit_true_fab_circles():
     assert len(fab) == geo.params.num_buttons  # one nominal circle per button
     assert all(c["radius"] == pytest.approx(geo.params.button_size / 2.0, abs=1e-4) for c in fab)
     # Copper is the polyline-approximated electrode rings.
+    assert len(_by_layer(ents, "F.Cu", "POLYLINE")) == len(geo.electrodes)
+
+
+def test_button_circle_emits_fab_circle_and_copper():
+    geo = _button_circle()
+    ents = _entities(_tags(dxf.widget_dxf_text(geo)))
+    fab = _by_layer(ents, "F.Fab", "CIRCLE")
+    assert len(fab) == 1
+    assert fab[0]["radius"] == pytest.approx(geo.params.size / 2.0, abs=1e-4)
     assert len(_by_layer(ents, "F.Cu", "POLYLINE")) == len(geo.electrodes)
 
 

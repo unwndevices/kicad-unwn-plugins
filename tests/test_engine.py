@@ -13,6 +13,7 @@ import pytest
 from captouch import engine
 from captouch.export import footprint, symbol
 from captouch.geometry import (
+    build_button,
     build_keypad,
     build_mutual_slider,
     build_slider,
@@ -20,6 +21,7 @@ from captouch.geometry import (
     build_wheel,
 )
 from captouch.params import (
+    ButtonParams,
     KeypadParams,
     MutualSliderParams,
     SliderParams,
@@ -58,6 +60,12 @@ _CASES = [
         build_keypad,
         footprint.keypad_footprint_text,
         symbol.keypad_symbol_lib_text,
+    ),
+    (
+        ButtonParams(name="CT_Button"),
+        build_button,
+        footprint.button_footprint_text,
+        symbol.button_symbol_lib_text,
     ),
 ]
 

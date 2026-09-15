@@ -40,6 +40,7 @@ captouch wheel  --preset st_rotary    # 5-segment rotary wheel
 captouch trackpad --num-rows 4 --num-cols 5   # 4×5 mutual-cap diamond pad
 captouch trackpad --panel-width 300 --panel-height 200  # or size from the overall pad
 captouch keypad --num-rows 4 --num-cols 3     # 4×3 discrete self-cap button grid
+captouch button --preset snowflake            # single 12 mm snowflake button
 captouch gui                          # live-preview desktop app
 ```
 
@@ -49,8 +50,8 @@ Each command writes two files into the output directory (default `./examples`):
 
 ## The CLI
 
-Five generator subcommands — `slider`, `mutual-slider`, `wheel`, `trackpad`,
-`keypad` — plus `from-params` (regenerate from a saved parameter set) and `gui`.
+Six generator subcommands — `slider`, `mutual-slider`, `wheel`, `trackpad`,
+`keypad`, `button` — plus `from-params` (regenerate from a saved parameter set) and `gui`.
 Run any with `--help` for the full parameter list.
 
 ### Options shared by every generator
@@ -92,6 +93,7 @@ Or size the strip by its overall `--length` instead of `--num-segments` (see
 ```sh
 captouch wheel --preset microchip --num-segments 6
 captouch wheel --shape spiral --spiral-angle 45
+captouch wheel --preset qt2120
 ```
 
 Wheel-specific: `--ring-width` (radial width) and `--arc-resolution` (polyline
@@ -110,6 +112,13 @@ adjacent electrodes interleave by angle. `0` degenerates to straight radial bars
 copper slivers raises a geometry-aware advisory (warned by default, refused under
 `--strict`) — ease it by reducing `--spiral-angle`, widening `--ring-width`, or
 adding segments.
+
+`--teeth-follow-curve` tessellates chevron / interdigitated tines as **circular
+arcs** concentric with the wheel instead of straight cartesian chords. That is
+the Microchip-style circumferential interleave a 3-channel QT2120 wheel needs —
+use `--preset qt2120` (interdigitated + follow-curve, thumb-sized 3-segment ring)
+as a starting point. Off by default so the original straight-leg look is
+unchanged.
 
 ### Trackpad
 
@@ -262,6 +271,30 @@ The default `--gap` is **4 mm** — the Microchip AN2934 §1.2.2 self-cap separa
 rule "4 mm + cover" for a bare board; when an `--overlay-thickness` is given, the
 advisory channel flags a gap below `4 mm + overlay` or a button below `3× overlay`
 (TI rule). The symbol records the **560 Ω** self-cap series-R recommendation.
+
+### Button
+
+```sh
+captouch button --preset snowflake
+captouch button --outline square --style solid --size 10
+captouch button --style interdigitated --ground-hat --num-legs 6
+captouch button --outline circle --style hatch --size 14
+```
+
+A **button** is a single self-capacitance key — one `BTN` pad, plus an optional
+`GND` hat. It is not a [keypad](#keypad): a keypad is an `R×C` grid of *solid*
+pads; this widget is the patterned single key (snowflake / comb / hatch) so copper
+area (Cp) stays down while the outline still fills a finger-sized square or
+circle.
+
+Button-specific: `--outline {square,circle}`, `--size` (side / diameter),
+`--style {solid,radial,interdigitated,chevron,hatch}`, `--num-legs` (spokes or
+comb fingers), `--air-gap` (clearance between legs), `--leg-width` / `--hub-diameter`
+/ `--rim-width` (auto if omitted), `--ground-hat` (pour the complementary copper
+as `GND` so the legs mesh with a grounded hat; radial / comb / chevron only),
+and `--corner-radius` (square only). The overlay sizing advisory is the same
+TI `3× overlay` rule as the keypad. The symbol records the **560 Ω** self-cap
+series-R recommendation.
 
 ### Design from overall size
 
@@ -565,10 +598,12 @@ troubleshooting.
    (or the toolbar button).
 2. Design a widget with the live preview, exactly as in the standalone GUI.
 3. **Add to KiCad project**. A dialog picks the destination — by default a
-   project-local `captouch` library (footprints in `captouch.pretty/`, symbols in
-   `captouch.kicad_sym`, referenced via `${KIPRJMOD}`). You can point the footprint
-   and symbol at **different** libraries, rename the library, or tick **global
-   library table** to install into a personal library shared across every project.
+   `captouch` library under sibling `../lib/` when that folder exists, otherwise
+   `<project>/libraries/` (never next to the `.kicad_pro`). Footprints go in
+   `captouch.pretty/`, symbols in `captouch.kicad_sym`, referenced via
+   `${KIPRJMOD}` / `${KIPRJMOD}/../…`. You can point the footprint and symbol at
+   **different** libraries, rename the library, or tick **global library table**
+   to install into a personal library shared across every project.
 4. In the PCB editor press <kbd>A</kbd> and pick `captouch:<name>` to place the
    footprint; add the matching symbol from the `captouch` symbol library in the
    schematic. (Several widgets accumulate in the one library; re-adding a same-named

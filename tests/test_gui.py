@@ -15,10 +15,12 @@ import pytest
 
 from captouch.export import dxf, footprint, symbol
 from captouch.geometry import (
+    ButtonGeometry,
     KeypadGeometry,
     MutualSliderGeometry,
     TrackpadGeometry,
     WheelGeometry,
+    build_button,
     build_keypad,
     build_mutual_slider,
     build_slider,
@@ -27,11 +29,13 @@ from captouch.geometry import (
 )
 from captouch.geometry._base import polygon_points
 from captouch.params import (
+    BUTTON_PRESETS,
     KEYPAD_PRESETS,
     MUTUAL_SLIDER_PRESETS,
     SLIDER_PRESETS,
     TRACKPAD_PRESETS,
     WHEEL_PRESETS,
+    ButtonParams,
     KeypadParams,
     MutualSliderParams,
     SliderParams,
@@ -285,6 +289,34 @@ def test_wheel_panel_spiral_shape_gates_teeth_and_twist(qapp):
     assert not panel.num_fingers.isEnabled()
     assert not panel.tooth_depth_auto.isEnabled()
     assert panel.spiral_angle.isEnabled()
+    assert not panel.teeth_follow_curve.isEnabled()
+    panel.shape.setCurrentText("chevron")
+    assert panel.teeth_follow_curve.isEnabled()
+    panel.shape.setCurrentText("rectangular")
+    assert panel.teeth_follow_curve.isEnabled()  # no-op, but still toggleable
+
+
+def test_wheel_panel_follow_curve_round_trips(qapp):
+    from captouch.gui.wheel_panel import WheelPanel
+    from captouch.params import WheelParams
+
+    panel = WheelPanel()
+    assert panel.params().teeth_follow_curve is False
+    panel.set_params(
+        WheelParams(
+            segment_shape="interdigitated",
+            num_segments=3,
+            finger_diameter=16.0,
+            num_fingers=4,
+            tooth_depth=6.0,
+            teeth_follow_curve=True,
+        )
+    )
+    got = panel.params()
+    assert got.segment_shape == "interdigitated"
+    assert got.teeth_follow_curve is True
+    assert got.num_segments == 3
+    assert got.tooth_depth == pytest.approx(6.0)
 
 
 def test_wheel_panel_spiral_angle_round_trips(qapp):
@@ -702,6 +734,74 @@ def test_load_params_switches_to_keypad(qapp):
 
 
 # --------------------------------------------------------------------------- #
+# widget switcher — button
+# --------------------------------------------------------------------------- #
+def test_button_panel_defaults_build_valid_geometry(qapp):
+    from captouch.gui.button_panel import ButtonPanel
+
+    panel = ButtonPanel()
+    geo = build_button(panel.params())
+    assert len(geo.active) == 1
+
+
+@pytest.mark.parametrize("key", sorted(BUTTON_PRESETS))
+def test_button_preset_roundtrips_through_panel(qapp, key):
+    from captouch.gui.button_panel import ButtonPanel
+
+    preset = BUTTON_PRESETS[key]
+    panel = ButtonPanel()
+    panel.set_params(preset)
+    got = panel.params()
+    assert got.outline == preset.outline
+    assert got.style == preset.style
+    assert got.size == pytest.approx(preset.size)
+    assert got.ground_hat is preset.ground_hat
+    build_button(got)
+
+
+def test_switch_to_button_builds_geometry(qapp):
+    from captouch.gui.app import MainWindow
+    from captouch.gui.button_panel import ButtonPanel
+
+    win = MainWindow()
+    win._on_widget_changed(5)  # 0–4 existing widgets, 5 Button
+    assert isinstance(win.panel, ButtonPanel)
+    assert isinstance(win.preview.geometry_model, ButtonGeometry)
+    assert "button" in win._status.text()
+
+
+def test_button_panel_circle_disables_corner_radius(qapp):
+    from captouch.gui.button_panel import ButtonPanel
+
+    panel = ButtonPanel()
+    panel.outline.setCurrentText("circle")
+    assert not panel.corner_radius.isEnabled()
+    panel.outline.setCurrentText("square")
+    assert panel.corner_radius.isEnabled()
+
+
+def test_button_solid_disables_leg_controls(qapp):
+    from captouch.gui.button_panel import ButtonPanel
+
+    panel = ButtonPanel()
+    panel.fill_style.setCurrentText("solid")
+    assert not panel.num_legs.isEnabled()
+    assert not panel.ground_hat.isEnabled()
+    panel.fill_style.setCurrentText("radial")
+    assert panel.num_legs.isEnabled()
+    assert panel.ground_hat.isEnabled()
+
+
+def test_load_params_switches_to_button(qapp):
+    from captouch.gui.app import MainWindow
+
+    win = MainWindow()
+    win.load_params(ButtonParams(outline="square", style="solid", name="CT_B"))
+    assert isinstance(win._geo, ButtonGeometry)
+    assert win.panel.params().outline == "square"
+
+
+# --------------------------------------------------------------------------- #
 # fab-rule warning banner
 # --------------------------------------------------------------------------- #
 def test_fab_banner_hidden_for_clean_default(qapp):
@@ -1036,10 +1136,11 @@ def test_install_current_writes_byte_identical_library(qapp, tmp_path):
 
     res = win.install_current(library.project_target(tmp_path))
 
-    fp_text, sym_text = engine.export_widget(win.preview.geometry_model)
+    fp_text, _sym_text = engine.export_widget(win.preview.geometry_model)
     assert res.fp_path.read_text() == fp_text
-    assert res.sym_path.read_text() == sym_text
+    assert f'(property "Footprint" "{res.fp_id}"' in res.sym_path.read_text()
     assert res.fp_id == "captouch:CT_Slider"
+    assert res.fp_path == tmp_path / "libraries" / "captouch.pretty" / "CT_Slider.kicad_mod"
     assert (tmp_path / "fp-lib-table").exists()
     assert (tmp_path / "sym-lib-table").exists()
 
@@ -1051,10 +1152,14 @@ def test_install_dialog_target_honours_split_locations(qapp, tmp_path):
     dlg = _InstallDialog(parent, project_dir=tmp_path, name="CT_Slider")
     dlg._nick.setText("touch")
     # The nickname change propagates to the not-yet-edited path defaults.
-    assert dlg._fp.text().endswith("touch.pretty")
-    assert dlg._sym.text().endswith("touch.kicad_sym")
+    assert dlg._fp.text().endswith("libraries/touch.pretty") or dlg._fp.text().endswith(
+        "libraries\\touch.pretty"
+    )
+    assert dlg._sym.text().endswith("libraries/touch.kicad_sym") or dlg._sym.text().endswith(
+        "libraries\\touch.kicad_sym"
+    )
 
     target = dlg.target()
     assert target.nickname == "touch"
-    assert target.fp_uri == "${KIPRJMOD}/touch.pretty"
-    assert target.sym_uri == "${KIPRJMOD}/touch.kicad_sym"
+    assert target.fp_uri == "${KIPRJMOD}/libraries/touch.pretty"
+    assert target.sym_uri == "${KIPRJMOD}/libraries/touch.kicad_sym"
