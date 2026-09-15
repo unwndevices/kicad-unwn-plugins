@@ -64,10 +64,13 @@ class WheelPanel(PanelBase):
         self.target_diameter = self._dspin(5.0, 500.0, 1.0)
         self.target_diameter.setValue(40.0)
         self.derived_segments = QLabel("—")
+        self.teeth_follow_curve = QCheckBox("Follow ring curve")
+        self.teeth_follow_curve.toggled.connect(self._emit)
         shape_box = QGroupBox("Shape && count")
         sf = QFormLayout(shape_box)
         sf.addRow("Name", self.name)
         sf.addRow("Boundary shape", self.shape)
+        sf.addRow(self.teeth_follow_curve)
         sf.addRow(self.diameter_driven)
         sf.addRow("Target outer Ø (mm)", self.target_diameter)
         sf.addRow("Derived segments", self.derived_segments)
@@ -153,6 +156,11 @@ class WheelPanel(PanelBase):
                 ),
                 self.target_diameter: "Overall outer diameter (mm) to size the segment count to.",
                 self.shape: "Electrode boundary style around the ring.",
+                self.teeth_follow_curve: (
+                    "Draw toothed boundaries as circular arcs along the ring "
+                    "instead of straight radial legs (Microchip / QT2120-style "
+                    "circumferential interleave). No effect on rectangular or spiral."
+                ),
                 self.num_segments: "Electrode count around the ring (≥3). The wheel is continuous.",
                 self.segment_width: (
                     "Arc width W (mm) at the mean radius. Auto derives W = finger − 2·gap."
@@ -189,6 +197,9 @@ class WheelPanel(PanelBase):
         self.tooth_depth_auto.setEnabled(teeth)
         self.tooth_depth.setEnabled(teeth and not self.tooth_depth_auto.isChecked())
         self.spiral_angle.setEnabled(shape == "spiral")
+        # Follow-curve tessellation is meaningful for toothed shapes; rectangular
+        # is a no-op (radial line) and spiral is already a polar curve.
+        self.teeth_follow_curve.setEnabled(shape != "spiral")
         self._emit()
 
     def _on_diameter_mode(self, *args) -> None:
@@ -239,6 +250,7 @@ class WheelPanel(PanelBase):
             finger_diameter=self.finger_diameter.value(),
             num_fingers=self.num_fingers.value(),
             tooth_depth=None if self.tooth_depth_auto.isChecked() else self.tooth_depth.value(),
+            teeth_follow_curve=self.teeth_follow_curve.isChecked(),
             spiral_angle=self.spiral_angle.value(),
             corner_radius=self.corner_radius.value(),
             tip_radius=self.tip_radius.value(),
@@ -270,6 +282,7 @@ class WheelPanel(PanelBase):
             self.air_gap.setValue(p.air_gap)
             self.finger_diameter.setValue(p.finger_diameter)
             self.num_fingers.setValue(p.num_fingers)
+            self.teeth_follow_curve.setChecked(p.teeth_follow_curve)
             self.spiral_angle.setValue(p.spiral_angle)
             self.corner_radius.setValue(p.corner_radius)
             self.tip_radius.setValue(p.tip_radius)

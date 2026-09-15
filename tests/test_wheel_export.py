@@ -149,3 +149,31 @@ def test_spiral_golden_symbol():
     text = symbol.wheel_symbol_lib_text(geo)
     golden = (GOLDEN / "CT_Wheel_Spiral.kicad_sym").read_text()
     assert text == golden
+
+
+def _arc_golden_params():
+    return WheelParams(
+        name="CT_Wheel_Arc",
+        segment_shape="interdigitated",
+        num_segments=3,
+        ring_width=6.0,
+        air_gap=0.5,
+        finger_diameter=16.0,
+        num_fingers=4,
+        tooth_depth=6.0,
+        teeth_follow_curve=True,
+    )
+
+
+def test_follow_curve_golden_footprint():
+    geo = build_wheel(_arc_golden_params())
+    text = footprint.wheel_footprint_text(geo)
+    golden = (GOLDEN / "CT_Wheel_Arc.kicad_mod").read_text()
+    assert text == golden
+
+
+def test_follow_curve_golden_symbol():
+    geo = build_wheel(_arc_golden_params())
+    text = symbol.wheel_symbol_lib_text(geo)
+    golden = (GOLDEN / "CT_Wheel_Arc.kicad_sym").read_text()
+    assert text == golden

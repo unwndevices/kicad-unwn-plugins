@@ -86,6 +86,8 @@ class WheelParams:
         twists by ``spiral_angle`` from the centre hole outward, so adjacent
         electrodes interleave by angle. Spiral has no teeth (see
         :attr:`spiral_angle`); allowed values are :data:`WHEEL_SEGMENT_SHAPES`.
+        Pair any toothed shape with :attr:`teeth_follow_curve` to tessellate
+        those tines as circular arcs along the ring instead of straight chords.
     segment_width:
         Arc width ``W`` of a segment at the mean radius. ``None`` (default)
         derives it from the finger as ``finger_diameter - 2 * air_gap``.
@@ -100,6 +102,13 @@ class WheelParams:
     tooth_depth:
         Half-amplitude (mm) of the boundary waveform at the mean radius. ``None``
         derives ``0.3 * W``. Must stay below ``W / 2``. Ignored for ``"spiral"``.
+    teeth_follow_curve:
+        When True, tessellate toothed boundaries (chevron / interdigitated) in
+        polar coordinates so tines **follow the ring** as circular arcs instead
+        of straight cartesian chords. This is the Microchip-style
+        circumferential interleave a 3-channel QT2120 wheel needs. No effect on
+        ``"rectangular"`` (already a radial line) or ``"spiral"`` (already a
+        polar curve). Default False keeps the original straight-leg look.
     spiral_angle:
         Boundary twist in **degrees** for the ``"spiral"`` shape only: how far one
         electrode boundary rotates from the inner (centre-hole) radius to the
@@ -143,6 +152,7 @@ class WheelParams:
     finger_diameter: float = 8.0
     num_fingers: int = 3
     tooth_depth: float | None = None
+    teeth_follow_curve: bool = False
     spiral_angle: float = 30.0
     corner_radius: float = 0.0
     tip_radius: float = 0.15
@@ -373,5 +383,20 @@ WHEEL_PRESETS: dict[str, WheelParams] = {
         air_gap=0.5,
         finger_diameter=8.0,
         spiral_angle=45.0,
+    ),
+    # AT42QT2120 3-channel self-cap wheel (slider/wheel mode uses SNS 0–2 only).
+    # Thumb-sized contact (finger Ø 16 mm → W = 15 mm) so a 3-segment ring still
+    # has a usable ~21 mm OD; interdigitated tines follow the annulus so
+    # interpolation stays continuous around the ring (AN2934 / QTAN0079).
+    "qt2120": WheelParams(
+        name="CT_Wheel_QT2120",
+        num_segments=3,
+        segment_shape="interdigitated",
+        ring_width=6.0,
+        air_gap=0.5,
+        finger_diameter=16.0,
+        num_fingers=4,
+        tooth_depth=6.0,
+        teeth_follow_curve=True,
     ),
 }
