@@ -42,19 +42,19 @@ def _read(p):
 @pytest.mark.parametrize("params", _ALL_WIDGETS, ids=lambda p: type(p).__name__)
 def test_installed_footprint_is_byte_identical(tmp_path, params):
     geo = engine.build_widget(params)
-    fp_text, sym_text = engine.export_widget(geo)
+    fp_text, _sym_text = engine.export_widget(geo)
 
     res = library.install_widget(params, project_dir=tmp_path)
 
     assert _read(res.fp_path) == fp_text
-    # A single-symbol library written from scratch equals the standalone symbol lib.
-    assert _read(res.sym_path) == sym_text
+    # Install fills the Footprint property so Assign Footprint works in KiCad.
+    assert f'(property "Footprint" "{res.fp_id}"' in _read(res.sym_path)
 
 
 def test_footprint_lands_in_pretty_dir_with_kicad_mod_name(tmp_path):
     res = library.install_widget(SliderParams(name="CT_Slider"), project_dir=tmp_path)
-    assert res.fp_path == tmp_path / "captouch.pretty" / "CT_Slider.kicad_mod"
-    assert res.sym_path == tmp_path / "captouch.kicad_sym"
+    assert res.fp_path == tmp_path / "libraries" / "captouch.pretty" / "CT_Slider.kicad_mod"
+    assert res.sym_path == tmp_path / "libraries" / "captouch.kicad_sym"
     assert res.fp_id == "captouch:CT_Slider"
 
 
@@ -74,7 +74,7 @@ def test_reinstall_replaces_same_named_symbol_without_duplicating(tmp_path):
     library.install_widget(SliderParams(name="CT_Slider", num_segments=4), project_dir=tmp_path)
     library.install_widget(SliderParams(name="CT_Slider", num_segments=6), project_dir=tmp_path)
 
-    lib = loads(_read(tmp_path / "captouch.kicad_sym"))
+    lib = loads(_read(tmp_path / "libraries" / "captouch.kicad_sym"))
     symbols = [s for s in find_all(lib, "symbol") if s[1] == "CT_Slider"]
     assert len(symbols) == 1  # replaced, not appended
 
@@ -98,11 +98,11 @@ def test_registers_project_local_libraries(tmp_path):
     entry = find_all(fp_table, "lib")[0]
     assert find(entry, "name")[1] == "captouch"
     assert find(entry, "type")[1] == "KiCad"
-    assert find(entry, "uri")[1] == "${KIPRJMOD}/captouch.pretty"
+    assert find(entry, "uri")[1] == "${KIPRJMOD}/libraries/captouch.pretty"
 
     sym_table = loads(_read(tmp_path / "sym-lib-table"))
     assert find_all(sym_table, "lib")[0]
-    assert find(find_all(sym_table, "lib")[0], "uri")[1] == "${KIPRJMOD}/captouch.kicad_sym"
+    assert find(find_all(sym_table, "lib")[0], "uri")[1] == "${KIPRJMOD}/libraries/captouch.kicad_sym"
 
 
 def test_registration_is_idempotent(tmp_path):
@@ -208,3 +208,26 @@ def test_install_without_target_or_project_dir_errors():
     geo = engine.build_widget(SliderParams(name="CT_Slider"))
     with pytest.raises(library.LibraryError):
         library.install(geo)
+
+
+def test_refuses_libraries_dumped_in_project_root(tmp_path):
+    with pytest.raises(library.LibraryError, match="project folder"):
+        library.make_target(
+            nickname="captouch",
+            fp_dir=tmp_path / "captouch.pretty",
+            sym_path=tmp_path / "captouch.kicad_sym",
+            project_dir=tmp_path,
+            scope="project",
+        )
+
+
+def test_prefers_sibling_lib_directory(tmp_path):
+    proj = tmp_path / "OpenChordM1"
+    sibling = tmp_path / "lib"
+    proj.mkdir()
+    sibling.mkdir()
+    res = library.install_widget(SliderParams(name="CT_Slider"), project_dir=proj)
+    assert res.fp_path == sibling / "captouch.pretty" / "CT_Slider.kicad_mod"
+    assert res.sym_path == sibling / "captouch.kicad_sym"
+    fp_table = loads(_read(proj / "fp-lib-table"))
+    assert find(find_all(fp_table, "lib")[0], "uri")[1] == "${KIPRJMOD}/../lib/captouch.pretty"
