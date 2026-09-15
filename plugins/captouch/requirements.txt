@@ -13,3 +13,6 @@
 # this line to the exact released version so the venv installs the matching wheel.
 kicad-python>=0.5
 kicad-captouch[gui]
+# kicad-captouch[gui] pulls shapely + PySide6. On CPython 3.9 (KiCad macOS) those
+# resolve to shapely 2.0.x and PySide6 6.10.x via environment markers in the
+# package metadata — both still publish cp39 wheels. Do not unpin to "latest".
