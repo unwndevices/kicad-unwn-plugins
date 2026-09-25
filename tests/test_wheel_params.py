@@ -214,3 +214,23 @@ def test_spiral_skips_teeth_collision_check():
 def test_slider_rejects_spiral():
     with pytest.raises(SliderError, match="segment_shape"):
         validate_slider(SliderParams(segment_shape="spiral"))
+
+
+def test_teeth_follow_curve_validates_on_toothed_shapes():
+    for shape in ("chevron", "interdigitated"):
+        validate_wheel(
+            WheelParams(
+                segment_shape=shape,
+                num_segments=3,
+                ring_width=6.0,
+                air_gap=0.5,
+                finger_diameter=16.0,
+                num_fingers=4,
+                tooth_depth=6.0,
+                teeth_follow_curve=True,
+            )
+        )
+
+
+def test_teeth_follow_curve_default_is_off():
+    assert WheelParams().teeth_follow_curve is False

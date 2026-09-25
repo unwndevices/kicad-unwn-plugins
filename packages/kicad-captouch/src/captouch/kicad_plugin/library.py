@@ -7,9 +7,11 @@ table so KiCad's *Add Footprint* / *Add Symbol* pickers find it.
 
 The destination is configurable (see :class:`LibraryTarget`):
 
-* **project scope** (default) — a ``captouch`` library inside the open project's
-  own directory, referenced via ``${KIPRJMOD}`` and registered in the project's
-  ``fp-lib-table`` / ``sym-lib-table``;
+* **project scope** (default) — a ``captouch`` library under a dedicated lib folder
+  (sibling ``../lib`` when present, else ``<project>/libraries/``), referenced via
+  ``${KIPRJMOD}`` / ``${KIPRJMOD}/../…`` and registered in the project's
+  ``fp-lib-table`` / ``sym-lib-table``. Never dumps ``*.pretty`` / ``*.kicad_sym``
+  as siblings of the ``.kicad_pro`` (that clutters the project and confuses reloads);
 * **global scope** — a personal library shared across every project, registered in
   KiCad's global tables with an absolute path.
 
@@ -22,6 +24,7 @@ KiCad, kipy, or Qt imports — so it is fully testable headlessly.
 
 from __future__ import annotations
 
+import re
 import sys
 from dataclasses import dataclass
 from pathlib import Path
@@ -37,8 +40,10 @@ __all__ = [
     "LibraryError",
     "LibraryTarget",
     "InstallResult",
+    "preferred_project_lib_root",
     "project_target",
     "make_target",
+    "assert_safe_library_paths",
     "kicad_config_dir",
     "install",
     "install_widget",
@@ -94,11 +99,12 @@ class InstallResult:
 # Target construction
 # --------------------------------------------------------------------------- #
 def _uri(path: Path, project_dir: Path | None) -> str:
-    """``${KIPRJMOD}``-relative URI when *path* is under *project_dir*, else absolute.
+    """``${KIPRJMOD}``-relative URI when *path* is near *project_dir*, else absolute.
 
     KiCad expands ``${KIPRJMOD}`` to the project directory, so a project-local
-    library stays portable when the project moves; anything outside the project is
-    stored as an absolute path.
+    library stays portable when the project moves. Paths under the project use
+    ``${KIPRJMOD}/…``; paths under the project parent (e.g. sibling ``lib/``) use
+    ``${KIPRJMOD}/../…``. Anything else is stored as an absolute path.
     """
     path = path.resolve()
     if project_dir is not None:
@@ -109,15 +115,67 @@ def _uri(path: Path, project_dir: Path | None) -> str:
             pass
         else:
             return f"{KIPRJMOD}/{rel.as_posix()}"
+        try:
+            rel = path.relative_to(project_dir.parent)
+        except ValueError:
+            pass
+        else:
+            return f"{KIPRJMOD}/../{rel.as_posix()}"
     return str(path)
 
 
+def preferred_project_lib_root(project_dir: Path | str) -> Path:
+    """Directory that should hold generated ``captouch.pretty`` / ``.kicad_sym``.
+
+    Prefer an existing sibling ``../lib`` (OpenChord-style hardware tree). Otherwise
+    use ``<project>/libraries/`` so files never sit next to the ``.kicad_pro``.
+    """
+    project_dir = Path(project_dir)
+    sibling = project_dir.parent / "lib"
+    if sibling.is_dir():
+        return sibling
+    return project_dir / "libraries"
+
+
+def assert_safe_library_paths(
+    project_dir: Path | str,
+    fp_dir: Path | str,
+    sym_path: Path | str,
+) -> None:
+    """Refuse installs that clutter or overwrite the KiCad project folder.
+
+    ``*.pretty`` / ``*.kicad_sym`` must not be direct children of the directory that
+    holds the ``.kicad_pro`` — that pattern dumps libraries into the project root,
+    breaks mental models, and has repeatedly left users unable to find parts.
+    """
+    proj = Path(project_dir).resolve()
+    fp = Path(fp_dir).resolve()
+    sym = Path(sym_path).resolve()
+    if fp.parent == proj:
+        raise LibraryError(
+            "refusing to write a .pretty library into the KiCad project folder "
+            f"({proj}); use {preferred_project_lib_root(proj) / fp.name} "
+            "(sibling ../lib when present, else <project>/libraries/)"
+        )
+    if sym.parent == proj:
+        raise LibraryError(
+            "refusing to write a .kicad_sym into the KiCad project folder "
+            f"({proj}); use {preferred_project_lib_root(proj) / sym.name} "
+            "(sibling ../lib when present, else <project>/libraries/)"
+        )
+    if fp.suffix.lower() != ".pretty":
+        raise LibraryError(f"footprint library must be a .pretty directory, not {fp}")
+    if sym.suffix.lower() != ".kicad_sym":
+        raise LibraryError(f"symbol path must end in .kicad_sym (got {sym.name})")
+
+
 def project_target(project_dir: Path | str, nickname: str = DEFAULT_NICKNAME) -> LibraryTarget:
-    """A project-local ``nickname`` library registered in the project's tables."""
+    """A project-scoped ``nickname`` library under :func:`preferred_project_lib_root`."""
+    root = preferred_project_lib_root(project_dir)
     return make_target(
         nickname=nickname,
-        fp_dir=Path(project_dir) / f"{nickname}.pretty",
-        sym_path=Path(project_dir) / f"{nickname}.kicad_sym",
+        fp_dir=root / f"{nickname}.pretty",
+        sym_path=root / f"{nickname}.kicad_sym",
         project_dir=Path(project_dir),
         scope="project",
     )
@@ -156,6 +214,7 @@ def make_target(
         if project_dir is None:
             raise LibraryError("project scope needs a project_dir")
         proj = Path(project_dir)
+        assert_safe_library_paths(proj, fp_dir, sym_path)
         fp_table, sym_table = proj / "fp-lib-table", proj / "sym-lib-table"
     else:
         raise LibraryError(f"unknown scope {scope!r} (expected 'project' or 'global')")
@@ -244,6 +303,9 @@ def install(
 
     existing = target.sym_path.read_text(encoding="utf-8") if target.sym_path.exists() else None
     merged = symbol.merge_symbol_into_lib(symbol.widget_symbol(geo), existing)
+    # Point the symbol's Footprint field at this library part so Assign Footprint works.
+    fp_id = f"{target.nickname}:{name}"
+    merged = _with_footprint_property(merged, name, fp_id)
     target.sym_path.parent.mkdir(parents=True, exist_ok=True)
     target.sym_path.write_text(merged, encoding="utf-8")
 
@@ -257,7 +319,7 @@ def install(
     return InstallResult(
         name=name,
         nickname=target.nickname,
-        fp_id=f"{target.nickname}:{name}",
+        fp_id=fp_id,
         fp_path=fp_path,
         sym_path=target.sym_path,
         fp_table=target.fp_table,
@@ -270,6 +332,34 @@ def install(
 # --------------------------------------------------------------------------- #
 # Library-table registration (fp-lib-table / sym-lib-table)
 # --------------------------------------------------------------------------- #
+def _with_footprint_property(sym_lib_text: str, symbol_name: str, fp_id: str) -> str:
+    """Set ``Footprint`` on *symbol_name* inside a ``.kicad_sym`` text blob."""
+    # Standalone export leaves Footprint empty; fill it for library installs.
+    needle = f'(symbol "{symbol_name}"'
+    idx = sym_lib_text.find(needle)
+    if idx < 0:
+        return sym_lib_text
+    # Only rewrite the first Footprint property after this symbol header and
+    # before the next top-level sibling symbol / end — keep it simple: first
+    # empty Footprint after the header is the one we want.
+    region_end = sym_lib_text.find('\n\t(symbol "', idx + len(needle))
+    if region_end < 0:
+        region_end = len(sym_lib_text)
+    region = sym_lib_text[idx:region_end]
+    old = '(property "Footprint" ""'
+    new = f'(property "Footprint" "{fp_id}"'
+    if old in region:
+        region = region.replace(old, new, 1)
+    elif f'(property "Footprint" "' in region:
+        region = re.sub(
+            r'\(property "Footprint" "[^"]*"',
+            f'(property "Footprint" "{fp_id}"',
+            region,
+            count=1,
+        )
+    return sym_lib_text[:idx] + region + sym_lib_text[region_end:]
+
+
 def _lib_entry(nickname: str, uri: str, descr: str) -> list:
     """One ``(lib (name …)(type "KiCad")(uri …)(options "")(descr …))`` node."""
     return [
@@ -300,9 +390,14 @@ def _register(table_path: Path, root: str, nickname: str, uri: str, descr: str) 
     when it adds a new entry or rewrites a stale URI. Whitespace in a pre-existing
     table is normalised on rewrite — semantically identical, and KiCad reformats it
     on its next save anyway.
+
+    Before rewriting an existing table, a sibling ``*.bak`` copy is written so a
+    bad merge cannot silently erase ``oc-*`` / other project library entries.
     """
+    prior_text: str | None = None
     if table_path.exists():
-        table = loads(table_path.read_text(encoding="utf-8"))
+        prior_text = table_path.read_text(encoding="utf-8")
+        table = loads(prior_text)
         if not isinstance(table, list) or head(table) != root:
             raise LibraryError(f"{table_path} is not a {root}")
     else:
@@ -323,5 +418,19 @@ def _register(table_path: Path, root: str, nickname: str, uri: str, descr: str) 
         table = [*table, _lib_entry(nickname, uri, descr)]
 
     table_path.parent.mkdir(parents=True, exist_ok=True)
-    table_path.write_text(dumps(table) + "\n", encoding="utf-8")
+    if prior_text is not None:
+        bak = table_path.with_name(table_path.name + ".bak")
+        bak.write_text(prior_text, encoding="utf-8")
+    new_text = dumps(table) + "\n"
+    # Sanity: never shrink a multi-lib table down to a single entry unless it
+    # already had ≤1 libs — that pattern matches the "wiped my fp-lib-table" bug.
+    if prior_text is not None:
+        prior_libs = prior_text.count("(lib")
+        new_libs = new_text.count("(lib")
+        if prior_libs >= 2 and new_libs < prior_libs:
+            raise LibraryError(
+                f"refusing to write {table_path.name}: would drop library entries "
+                f"({prior_libs} → {new_libs}). Backup left untouched."
+            )
+    table_path.write_text(new_text, encoding="utf-8")
     return True

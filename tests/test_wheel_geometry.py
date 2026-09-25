@@ -151,3 +151,73 @@ def test_spiral_ignores_teeth_fields():
     a = build_wheel(_params("spiral", num_fingers=3, tooth_depth=None))
     b = build_wheel(_params("spiral", num_fingers=9, tooth_depth=2.0))
     assert [e.points for e in a.electrodes] == [e.points for e in b.electrodes]
+
+
+# --------------------------------------------------------------------------- #
+# teeth_follow_curve: tines follow the ring
+# --------------------------------------------------------------------------- #
+def test_follow_curve_differs_from_straight_legs():
+    # Polar tessellation must actually change the copper for toothed shapes.
+    radial = build_wheel(_params("interdigitated"))
+    arc = build_wheel(_params("interdigitated", teeth_follow_curve=True))
+    assert [e.points for e in radial.electrodes] != [e.points for e in arc.electrodes]
+    radial_c = build_wheel(_params("chevron"))
+    arc_c = build_wheel(_params("chevron", teeth_follow_curve=True))
+    assert [e.points for e in radial_c.electrodes] != [e.points for e in arc_c.electrodes]
+
+
+def test_follow_curve_is_noop_on_rectangular():
+    # A rectangular boundary is a radial line: polar tessellation adds no vertices.
+    a = build_wheel(_params("rectangular"))
+    b = build_wheel(_params("rectangular", teeth_follow_curve=True))
+    assert [e.points for e in a.electrodes] == [e.points for e in b.electrodes]
+
+
+def test_follow_curve_is_ignored_on_spiral():
+    a = build_wheel(_params("spiral", spiral_angle=45.0))
+    b = build_wheel(_params("spiral", spiral_angle=45.0, teeth_follow_curve=True))
+    assert [e.points for e in a.electrodes] == [e.points for e in b.electrodes]
+
+
+def test_follow_curve_interdigitated_tines_are_constant_radius():
+    # A square-wave tooth tip is a constant-radius run in polar space. After
+    # arc tessellation, consecutive vertices along that run must stay on a
+    # circle (sagitta of a cartesian chord would dip inward).
+    geo = build_wheel(
+        _params("interdigitated", num_fingers=3, tooth_depth=1.5, teeth_follow_curve=True)
+    )
+    radii = [math.hypot(x, y) for x, y in geo.electrodes[0].points]
+    run = 1
+    longest = 1
+    for i in range(1, len(radii)):
+        if abs(radii[i] - radii[i - 1]) < 0.05:
+            run += 1
+            longest = max(longest, run)
+        else:
+            run = 1
+    assert longest >= 4, f"no constant-radius tine (longest run {longest})"
+
+
+def test_follow_curve_three_segment_neighbour_reaches_pad_centre():
+    # Product goal: a 3-channel QT2120 wheel should not leave a fat single-channel
+    # plateau at the middle of each pad. At the mean-radius centroid of electrode
+    # 0, the nearest *other* electrode must be closer than on a rectangular
+    # (untoothed) wheel of the same pitch — the neighbour's arc tines reach in.
+    kw = dict(
+        num_segments=3,
+        ring_width=6.0,
+        air_gap=0.5,
+        finger_diameter=16.0,
+        num_fingers=4,
+        tooth_depth=6.0,
+    )
+    rect = build_wheel(_params("rectangular", segment_width=15.0, **kw))
+    arc = build_wheel(_params("interdigitated", teeth_follow_curve=True, **kw))
+
+    def dist_to_neighbour(geo):
+        e0 = geo.electrodes[0]
+        ang = math.atan2(e0.polygon.centroid.y, e0.polygon.centroid.x)
+        pt = Point(geo.mean_radius * math.cos(ang), geo.mean_radius * math.sin(ang))
+        return min(e.polygon.distance(pt) for e in geo.electrodes[1:])
+
+    assert dist_to_neighbour(arc) < dist_to_neighbour(rect) * 0.6

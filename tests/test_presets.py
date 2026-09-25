@@ -38,6 +38,9 @@ WHEEL_EXPECT = {
     "microchip": dict(num_segments=4, shape="interdigitated", W=6.0, A=1.0, finger=8.0, ring=4.0),
     "infineon": dict(num_segments=8, shape="chevron", W=7.0, A=0.5, finger=8.0, ring=5.0),
     "spiral": dict(num_segments=8, shape="spiral", W=7.0, A=0.5, finger=8.0, ring=6.0),
+    "qt2120": dict(
+        num_segments=3, shape="interdigitated", W=15.0, A=0.5, finger=16.0, ring=6.0
+    ),
 }
 
 # Trackpad: matrix size, pitch, gap. (Infineon AN234185 §4.3; Microchip AN2934
@@ -86,8 +89,13 @@ def test_wheel_preset_matches_vendor_reference(key):
     assert p.finger_diameter == pytest.approx(exp["finger"])
     assert p.ring_width == pytest.approx(exp["ring"])
     assert abs(p.width + 2 * p.air_gap - p.finger_diameter) <= FINGER_CONSTRAINT_TOL
-    # Arc width should stay in ST's recommended 6–8 mm band (AN2869 §5.3).
-    assert 6.0 <= p.width <= 8.0
+    # Arc width should stay in ST's recommended 6–8 mm band (AN2869 §5.3) except
+    # the 3-channel QT2120 thumb stick, which needs a wider W so the ring is a
+    # usable ~21 mm OD with only three electrodes.
+    if key != "qt2120":
+        assert 6.0 <= p.width <= 8.0
+    else:
+        assert p.teeth_follow_curve is True
 
 
 # -- trackpad ---------------------------------------------------------------- #

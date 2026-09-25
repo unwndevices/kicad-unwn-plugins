@@ -47,6 +47,9 @@ def test_manifest_is_valid_json_and_present():
 def test_manifest_has_required_plugin_fields(manifest):
     assert _PLUGIN_REQUIRED <= set(manifest)
     assert manifest["runtime"]["type"] == "python"
+    # KiCad 9/10 on macOS still bundles CPython 3.9.13 as the IPC interpreter.
+    # Requiring 3.10+ made the PCM plugin silently fail to build its venv there.
+    assert manifest["runtime"]["min_version"] == "3.9"
     assert manifest["actions"], "at least one action"
 
 

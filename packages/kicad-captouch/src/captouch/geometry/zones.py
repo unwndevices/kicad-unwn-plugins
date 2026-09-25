@@ -30,6 +30,7 @@ from shapely.geometry import Polygon, box
 
 from ..params import has_support
 from ._base import COURTYARD_MARGIN, ROUND, Point, polygon_points, rounded_rect_points
+from .button import ButtonGeometry
 from .keypad import KeypadGeometry
 from .slider import SliderGeometry
 from .trackpad import TrackpadGeometry
@@ -39,7 +40,9 @@ __all__ = ["SupportCopper", "build_support", "net_tie_number"]
 
 #: Geometry whose support copper we can build (shares ``params``, ``bounds``,
 #: ``courtyard_outline``).
-SupportGeometry = Union[SliderGeometry, WheelGeometry, TrackpadGeometry, KeypadGeometry]
+SupportGeometry = Union[
+    SliderGeometry, WheelGeometry, TrackpadGeometry, KeypadGeometry, ButtonGeometry
+]
 
 #: Quarter-circle segments for buffering the support-copper outlines. These are
 #: real copper edges (the guard band) / documentation, so smooth but not extreme.

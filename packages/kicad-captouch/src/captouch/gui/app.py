@@ -36,13 +36,20 @@ from PySide6.QtWidgets import (
 from .. import engine
 from ..export import dxf
 from ..export.iqs550 import IQS550ConfigError, render_iqs550_config
-from ..geometry import KeypadGeometry, MutualSliderGeometry, TrackpadGeometry, WheelGeometry
+from ..geometry import (
+    ButtonGeometry,
+    KeypadGeometry,
+    MutualSliderGeometry,
+    TrackpadGeometry,
+    WheelGeometry,
+)
 from ..geometry._base import GeometryError
 from ..kicad_plugin import library
 from ..params import (
     DEFAULT_PROFILE,
     DEVICES,
     FAB_PROFILES,
+    ButtonParams,
     KeypadParams,
     MutualSliderParams,
     SliderError,
@@ -53,6 +60,7 @@ from ..params import (
     params_from_json,
     params_to_json,
 )
+from .button_panel import ButtonPanel
 from .keypad_panel import KeypadPanel
 from .mutual_slider_panel import MutualSliderPanel
 from .panel import ParamPanel
@@ -78,13 +86,14 @@ _ADVICE_STYLE = (
 )
 
 # (label, panel factory) per selectable widget type. New widgets are appended
-# (keypad index 4) so the existing widget-switcher indices stay stable.
+# (keypad index 4, button index 5) so the existing widget-switcher indices stay stable.
 _WIDGETS = (
     ("Slider", ParamPanel),
     ("Wheel", WheelPanel),
     ("Trackpad", TrackpadPanel),
     ("Mutual slider", MutualSliderPanel),
     ("Keypad", KeypadPanel),
+    ("Button", ButtonPanel),
 )
 
 
@@ -132,6 +141,14 @@ def _summary(geo: WidgetGeometry) -> str:
             f"({kp.num_buttons} keys, {kp.num_pins} pins) · size {kp.button_size:.2f} "
             f"gap {kp.gap:.2f} mm · extent {maxx - minx:.2f} × {maxy - miny:.2f} mm"
         )
+    if isinstance(geo, ButtonGeometry):
+        bp = geo.params
+        hat = " + GND hat" if bp.ground_hat else ""
+        return (
+            f"{bp.outline} {bp.style} button{hat} — {bp.size:.2f} mm · "
+            f"{len(geo.active)} sense + {len(geo.dummies)} dummy · "
+            f"{bp.num_pins} pin{'s' if bp.num_pins != 1 else ''}"
+        )
     sp = geo.params
     minx, miny, maxx, maxy = geo.bounds
     return (
@@ -144,11 +161,10 @@ def _summary(geo: WidgetGeometry) -> str:
 class _InstallDialog(QDialog):
     """Choose where to install the generated footprint + symbol library.
 
-    Defaults to a project-local ``captouch`` library (the open project's
-    directory). The footprint ``.pretty`` and symbol ``.kicad_sym`` are independent
-    paths, so they may be sent to different libraries; ticking *global* registers in
-    KiCad's user-wide tables instead of the project's, for a personal library shared
-    across projects.
+    Defaults to a dedicated lib folder (sibling ``../lib`` when present, else
+    ``<project>/libraries/``) — never the KiCad project directory itself. The
+    footprint ``.pretty`` and symbol ``.kicad_sym`` are independent paths; ticking
+    *global* registers in KiCad's user-wide tables instead of the project's.
     """
 
     def __init__(self, parent: QWidget, *, project_dir: Path, name: str) -> None:
@@ -159,9 +175,10 @@ class _InstallDialog(QDialog):
         self._sym_edited = False
 
         nick = library.DEFAULT_NICKNAME
+        lib_root = library.preferred_project_lib_root(project_dir)
         self._nick = QLineEdit(nick)
-        self._fp = QLineEdit(str(project_dir / f"{nick}.pretty"))
-        self._sym = QLineEdit(str(project_dir / f"{nick}.kicad_sym"))
+        self._fp = QLineEdit(str(lib_root / f"{nick}.pretty"))
+        self._sym = QLineEdit(str(lib_root / f"{nick}.kicad_sym"))
         self._global = QCheckBox("Register for all projects (global library table)")
         self._nick.textChanged.connect(self._on_nick_changed)
         self._fp.textEdited.connect(lambda _: setattr(self, "_fp_edited", True))
@@ -179,7 +196,10 @@ class _InstallDialog(QDialog):
         buttons.accepted.connect(self.accept)
         buttons.rejected.connect(self.reject)
 
-        hint = QLabel(f"Installs “{name}” so KiCad's Add Footprint / Add Symbol can place it.")
+        hint = QLabel(
+            f"Installs “{name}” so KiCad's Add Footprint / Add Symbol can place it. "
+            f"Default folder: {lib_root} (not the project root)."
+        )
         hint.setWordWrap(True)
 
         layout = QVBoxLayout(self)
@@ -200,20 +220,21 @@ class _InstallDialog(QDialog):
     def _on_nick_changed(self, text: str) -> None:
         """Track the nickname in the path defaults until the user edits them."""
         nick = text.strip() or library.DEFAULT_NICKNAME
+        lib_root = library.preferred_project_lib_root(self._project_dir)
         if not self._fp_edited:
-            self._fp.setText(str(self._project_dir / f"{nick}.pretty"))
+            self._fp.setText(str(lib_root / f"{nick}.pretty"))
         if not self._sym_edited:
-            self._sym.setText(str(self._project_dir / f"{nick}.kicad_sym"))
+            self._sym.setText(str(lib_root / f"{nick}.kicad_sym"))
 
     def _browse_fp(self) -> None:
-        start = self._fp.text() or str(self._project_dir)
+        start = self._fp.text() or str(library.preferred_project_lib_root(self._project_dir))
         chosen = QFileDialog.getExistingDirectory(self, "Footprint library (.pretty)", start)
         if chosen:
             self._fp.setText(chosen)
             self._fp_edited = True
 
     def _browse_sym(self) -> None:
-        start = self._sym.text() or str(self._project_dir)
+        start = self._sym.text() or str(library.preferred_project_lib_root(self._project_dir))
         chosen, _ = QFileDialog.getSaveFileName(
             self, "Symbol library", start, "KiCad symbol library (*.kicad_sym)"
         )
@@ -224,13 +245,37 @@ class _InstallDialog(QDialog):
     def target(self) -> library.LibraryTarget:
         """Build the chosen :class:`~captouch.kicad_plugin.library.LibraryTarget`."""
         scope = "global" if self._global.isChecked() else "project"
+        fp_dir = Path(self._fp.text()).expanduser()
+        sym_path = Path(self._sym.text()).expanduser()
+        self._refuse_dangerous_paths(fp_dir, sym_path)
         return library.make_target(
             nickname=self._nick.text().strip() or library.DEFAULT_NICKNAME,
-            fp_dir=Path(self._fp.text()).expanduser(),
-            sym_path=Path(self._sym.text()).expanduser(),
+            fp_dir=fp_dir,
+            sym_path=sym_path,
             scope=scope,
             project_dir=self._project_dir,
         )
+
+    def _refuse_dangerous_paths(self, fp_dir: Path, sym_path: Path) -> None:
+        """Block installs that would overwrite KiCad project / board files."""
+        proj = self._project_dir.resolve()
+        forbidden_suffixes = {
+            ".kicad_pro",
+            ".kicad_sch",
+            ".kicad_pcb",
+            ".kicad_prl",
+            ".kicad_dru",
+            ".kicad_wks",
+        }
+        sym = sym_path.resolve()
+        if sym.suffix.lower() in forbidden_suffixes or sym.name.startswith("~"):
+            raise library.LibraryError(
+                f"refusing to write symbol library over project file: {sym}"
+            )
+        # Shared rules: no project-root clutter, require .pretty / .kicad_sym.
+        library.assert_safe_library_paths(proj, fp_dir, sym_path)
+        if sym.name in {"fp-lib-table", "sym-lib-table"} or sym.name.endswith(".lck"):
+            raise library.LibraryError(f"refusing to overwrite {sym.name}")
 
 
 class MainWindow(QMainWindow):
@@ -610,6 +655,8 @@ class MainWindow(QMainWindow):
     @staticmethod
     def _widget_index(p) -> int:
         """Selector index (matching _WIDGETS order) for a params object."""
+        if isinstance(p, ButtonParams):
+            return 5
         if isinstance(p, KeypadParams):
             return 4
         if isinstance(p, MutualSliderParams):

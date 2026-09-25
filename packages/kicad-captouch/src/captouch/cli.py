@@ -5,6 +5,7 @@
 ``captouch wheel``          generates a wheel (rotary slider) footprint + symbol.
 ``captouch trackpad``       generates a mutual-cap XY diamond trackpad footprint + symbol.
 ``captouch keypad``         generates a discrete self-cap button-grid footprint + symbol.
+``captouch button``         generates a single self-cap button (solid / snowflake / comb) footprint + symbol.
 ``captouch gui``            launches the PySide6 live-preview app (needs the gui extra).
 ``captouch spike``          emits the Phase-0 format-spike pair (kept as a smoke test).
 """
@@ -19,6 +20,7 @@ from typing import Any
 from . import __version__, engine
 from .export import dxf, footprint, iqs550, symbol
 from .geometry import (
+    build_button,
     build_keypad,
     build_mutual_slider,
     build_slider,
@@ -27,7 +29,10 @@ from .geometry import (
     net_tie_number,
 )
 from .params import (
+    BUTTON_OUTLINES,
+    BUTTON_PRESETS,
     BUTTON_SHAPES,
+    BUTTON_STYLES,
     CLIP_MODES,
     DEFAULT_PROFILE,
     DEVICES,
@@ -40,6 +45,7 @@ from .params import (
     TRACKPAD_PRESETS,
     WHEEL_PRESETS,
     WHEEL_SEGMENT_SHAPES,
+    ButtonParams,
     KeypadParams,
     MutualSliderError,
     MutualSliderParams,
@@ -573,6 +579,8 @@ def _wheel_params_from_args(args: argparse.Namespace) -> WheelParams:
             overrides[field] = value
     if args.relax_finger_constraint:
         overrides["relax_finger_constraint"] = True
+    if getattr(args, "teeth_follow_curve", False):
+        overrides["teeth_follow_curve"] = True
     overrides.update(_support_overrides(args))
     overrides.update(_sensing_overrides(args))
 
@@ -666,6 +674,12 @@ def _add_wheel_parser(sub: argparse._SubParsersAction) -> None:
     p.add_argument("--finger-diameter", type=float, help="finger contact diameter (mm)")
     p.add_argument("--num-fingers", type=int, help="teeth per boundary (chevron/interdigitated)")
     p.add_argument("--tooth-depth", type=float, help="boundary half-amplitude (mm)")
+    p.add_argument(
+        "--teeth-follow-curve",
+        action="store_true",
+        help="tessellate toothed boundaries as circular arcs along the ring "
+        "(chevron/interdigitated; Microchip/QT2120-style)",
+    )
     p.add_argument(
         "--spiral-angle",
         type=float,
@@ -1009,6 +1023,117 @@ def _add_keypad_parser(sub: argparse._SubParsersAction) -> None:
 
 
 # --------------------------------------------------------------------------- #
+# button
+# --------------------------------------------------------------------------- #
+def _button_params_from_args(args: argparse.Namespace) -> ButtonParams:
+    """Start from a preset (or defaults) and apply only explicitly-set flags."""
+    base = BUTTON_PRESETS[args.preset] if args.preset else ButtonParams()
+
+    overrides: dict[str, Any] = {}
+    for flag, field in (
+        ("name", "name"),
+        ("outline", "outline"),
+        ("size", "size"),
+        ("style", "style"),
+        ("num_legs", "num_legs"),
+        ("air_gap", "air_gap"),
+        ("leg_width", "leg_width"),
+        ("hub_diameter", "hub_diameter"),
+        ("rim_width", "rim_width"),
+        ("corner_radius", "corner_radius"),
+    ):
+        value = getattr(args, flag)
+        if value is not None:
+            overrides[field] = value
+    if args.ground_hat:
+        overrides["ground_hat"] = True
+    overrides.update(_support_overrides(args))
+    overrides.update(_sensing_overrides(args))
+    return replace(base, **overrides)
+
+
+def _button(args: argparse.Namespace) -> int:
+    if args.list_fab_profiles:
+        return _list_fab_profiles()
+    if args.list_presets:
+        for key, p in BUTTON_PRESETS.items():
+            hat = " +hat" if p.ground_hat else ""
+            print(f"{key:10} {p.name}  ({p.outline} {p.style}{hat}, {p.size:.1f} mm)")
+        return 0
+
+    try:
+        params = _button_params_from_args(args)
+        geo = build_button(params)
+    except SliderError as exc:  # ButtonError subclasses SliderError
+        print(f"error: {exc}")
+        return 2
+
+    violations = check_fab(params, args.fab_profile)
+    advisories = check_advisories(params)
+    if args.strict and _strict_blocks(violations, advisories):
+        _report_fab(violations, args.fab_profile, strict=True)
+        _report_advisories(advisories, strict=True)
+        return 3
+
+    args.out.mkdir(parents=True, exist_ok=True)
+    fp_path = args.out / f"{params.name}.kicad_mod"
+    sym_path = args.out / f"{params.name}.kicad_sym"
+    fp_path.write_text(footprint.button_footprint_text(geo), encoding="utf-8")
+    sym_path.write_text(symbol.button_symbol_lib_text(geo), encoding="utf-8")
+    _maybe_save_params(args, params)
+    _maybe_write_dxf(args, geo)
+
+    print(f"wrote {fp_path}")
+    print(f"wrote {sym_path}")
+    hat = " + GND hat" if params.ground_hat else ""
+    print(
+        f"  {params.outline} {params.style} button{hat}: {params.size:.2f} mm, "
+        f"{params.num_pins} pin{'s' if params.num_pins != 1 else ''}"
+    )
+    _report_support(geo)
+    _report_fab(violations, args.fab_profile, strict=False)
+    _report_advisories(advisories, strict=False)
+    return 0
+
+
+def _add_button_parser(sub: argparse._SubParsersAction) -> None:
+    p = sub.add_parser("button", help="generate a single self-cap button footprint + symbol")
+    p.add_argument(
+        "-o",
+        "--out",
+        type=Path,
+        default=Path("examples"),
+        help="output directory (default: ./examples)",
+    )
+    p.add_argument("--list-presets", action="store_true", help="list presets and exit")
+    p.add_argument("--preset", choices=sorted(BUTTON_PRESETS), help="start from a named preset")
+    p.add_argument("--name", help="footprint/symbol base name")
+    p.add_argument("--outline", choices=BUTTON_OUTLINES, help="outer shape: square / circle")
+    p.add_argument("--size", type=float, help="overall size (mm): square side / circle diameter")
+    p.add_argument(
+        "--style",
+        choices=BUTTON_STYLES,
+        help="copper fill: solid / radial / interdigitated / chevron / hatch",
+    )
+    p.add_argument("--num-legs", type=int, help="radial spokes or comb fingers")
+    p.add_argument("--air-gap", type=float, help="clearance between legs (mm)")
+    p.add_argument("--leg-width", type=float, help="leg / hatch-line width (mm)")
+    p.add_argument("--hub-diameter", type=float, help="radial hub diameter (mm)")
+    p.add_argument("--rim-width", type=float, help="outer frame width (mm)")
+    p.add_argument(
+        "--ground-hat",
+        action="store_true",
+        help="pour complementary copper as a GND pad (radial / comb / chevron)",
+    )
+    p.add_argument("--corner-radius", type=float, help="ESD corner rounding for square (mm)")
+    _add_output_args(p)
+    _add_support_args(p)
+    _add_sensing_args(p)
+    _add_fab_args(p)
+    p.set_defaults(func=_button)
+
+
+# --------------------------------------------------------------------------- #
 # from-params: regenerate from a saved JSON parameter set
 # --------------------------------------------------------------------------- #
 def _from_params(args: argparse.Namespace) -> int:
@@ -1138,6 +1263,7 @@ def main(argv: list[str] | None = None) -> int:
     _add_wheel_parser(sub)
     _add_trackpad_parser(sub)
     _add_keypad_parser(sub)
+    _add_button_parser(sub)
     _add_from_params_parser(sub)
     _add_gui_parser(sub)
     _add_spike_parser(sub)

@@ -18,6 +18,7 @@ from .export import footprint, symbol
 from .export.footprint import WidgetGeometry
 from .geometry import (
     TrackpadGeometry,
+    build_button,
     build_keypad,
     build_mutual_slider,
     build_slider,
@@ -25,6 +26,7 @@ from .geometry import (
     build_wheel,
 )
 from .params import (
+    ButtonParams,
     KeypadParams,
     MutualSliderParams,
     TrackpadParams,
@@ -49,6 +51,8 @@ def build_widget(params: WidgetParams) -> WidgetGeometry:
         return build_trackpad(params)
     if isinstance(params, KeypadParams):
         return build_keypad(params)
+    if isinstance(params, ButtonParams):
+        return build_button(params)
     return build_slider(params)
 
 

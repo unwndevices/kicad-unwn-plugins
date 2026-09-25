@@ -25,7 +25,9 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass
+from typing import Union
 
+from .button import ButtonParams
 from .keypad import KeypadParams
 from .mutual_slider import MutualSliderParams
 from .slider import SliderParams
@@ -33,7 +35,9 @@ from .trackpad import TrackpadParams
 from .wheel import WheelParams
 
 #: Every widget params type the fab guards accept.
-_WidgetParams = SliderParams | WheelParams | TrackpadParams | MutualSliderParams | KeypadParams
+_WidgetParams = Union[
+    SliderParams, WheelParams, TrackpadParams, MutualSliderParams, KeypadParams, ButtonParams
+]
 
 __all__ = [
     "FabRules",
@@ -187,6 +191,20 @@ def _keypad_features(p: KeypadParams) -> list[_Feature]:
     return [("button-to-button gap", CLEARANCE, p.gap)]
 
 
+def _button_features(p: ButtonParams) -> list[_Feature]:
+    """Tightest copper/gap on a patterned single button; solid pads have none."""
+    if p.style == "solid":
+        return []
+    feats: list[_Feature] = [
+        ("button air gap", CLEARANCE, p.air_gap),
+        ("button leg width", WIDTH, p.effective_leg_width),
+    ]
+    rim = p.effective_rim_width
+    if rim > 0:
+        feats.append(("button rim width", WIDTH, rim))
+    return feats
+
+
 def _support_features(p: _WidgetParams) -> list[_Feature]:
     """Fab-critical copper widths from the optional support-copper features.
 
@@ -214,6 +232,8 @@ def fab_features(params: _WidgetParams) -> list[_Feature]:
         base = _trackpad_features(params.to_trackpad())
     elif isinstance(params, KeypadParams):
         base = _keypad_features(params)
+    elif isinstance(params, ButtonParams):
+        base = _button_features(params)
     elif isinstance(params, WheelParams):
         base = _wheel_features(params)
     elif isinstance(params, SliderParams):

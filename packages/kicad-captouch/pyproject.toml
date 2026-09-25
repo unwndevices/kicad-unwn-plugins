@@ -7,16 +7,32 @@ name = "kicad-captouch"
 version = "0.1.0"
 description = "Parametric generator for capacitive-touch interface footprints (sliders, wheels, XY pads) for KiCad"
 readme = "README.md"
-requires-python = ">=3.10"
+requires-python = ">=3.9"
 license = "GPL-3.0-or-later"
 license-files = ["LICENSE"]
 authors = [{ name = "Ciro Caputo Viglione" }]
 keywords = ["kicad", "capacitive-touch", "footprint", "pcb", "eda", "slider", "trackpad"]
-dependencies = ["shapely>=2.0", "kicad-core"]
+# Shapely 2.1 and PySide6 6.11 dropped 3.9; KiCad 9/10 on macOS still ships 3.9.13
+# as the IPC plugin interpreter, so keep a 3.9-capable pin on that path.
+dependencies = [
+    "shapely>=2.0,<2.1; python_version < '3.10'",
+    "shapely>=2.0; python_version >= '3.10'",
+    "kicad-core",
+]
 
 [project.optional-dependencies]
-gui = ["PySide6>=6.6"]
-dev = ["pytest>=7", "pytest-cov>=4", "ruff>=0.6", "mypy>=1.8", "PySide6>=6.6", "jsonschema>=4"]
+gui = [
+    "PySide6>=6.6,<6.11; python_version < '3.10'",
+    "PySide6>=6.6; python_version >= '3.10'",
+]
+dev = [
+    "pytest>=7",
+    "pytest-cov>=4",
+    "ruff>=0.6",
+    "mypy>=1.8",
+    "jsonschema>=4",
+    "kicad-captouch[gui]",
+]
 # Standalone-binary build toolchain (PyInstaller bundles the GUI, so pull it in).
 packaging = ["kicad-captouch[gui]", "pyinstaller>=6"]
 

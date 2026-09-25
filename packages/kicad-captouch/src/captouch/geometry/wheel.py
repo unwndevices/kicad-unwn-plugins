@@ -27,6 +27,15 @@ the electrodes interleave into a smooth iPod-style swirl. Because every spiral
 boundary is a rigid rotation of one another they never cross, and the same
 buffer-and-subtract construction yields exactly ``M`` swirled wedges. Spiral is
 toothless (``num_fingers`` / ``tooth_depth`` ignored, ``amplitude`` is ``0``).
+
+When ``teeth_follow_curve`` is set, the same chevron / interdigitated waveforms
+are tessellated in polar coordinates so **constant-radius runs become circular
+arcs** (and mixed r/θ runs become short Archimedean spirals) instead of cutting
+cartesian chords across the ring. That is the Microchip-style circumferential
+interleave a 3-channel QT2120 wheel needs: tines follow the annulus, so
+interpolation stays continuous instead of leaving mid-pad dead zones. The flag
+is a no-op on rectangular (already a radial line) and ignored for spiral
+(already a polar curve).
 """
 
 from __future__ import annotations
@@ -93,6 +102,38 @@ class WheelGeometry:
         return pairs[:half], pairs[half:]
 
 
+def _polar_to_cartesian(
+    theta: float,
+    wf: list[tuple[float, float]],
+    quad_segs: int,
+) -> list[tuple[float, float]]:
+    """Map a polar ``(angular-offset, radius)`` polyline to cartesian.
+
+    Spans that change angle are tessellated at ``quad_segs`` segments per 90°
+    so constant-radius runs become circular arcs (and mixed r/θ runs become
+    short Archimedean spirals) instead of a single cartesian chord. Radial
+    spans (constant angle) stay two-point lines.
+    """
+    if not wf:
+        return []
+    da0, r0 = wf[0]
+    pts = [(r0 * math.cos(theta + da0), r0 * math.sin(theta + da0))]
+    quarter = math.pi / 2.0
+    for da1, r1 in wf[1:]:
+        dtheta = da1 - da0
+        if abs(dtheta) < 1e-15:
+            pts.append((r1 * math.cos(theta + da1), r1 * math.sin(theta + da1)))
+        else:
+            n = max(1, round(quad_segs * abs(dtheta) / quarter))
+            for i in range(1, n + 1):
+                t = i / n
+                da = da0 + t * dtheta
+                rho = r0 + t * (r1 - r0)
+                pts.append((rho * math.cos(theta + da), rho * math.sin(theta + da)))
+        da0, r0 = da1, r1
+    return pts
+
+
 def build_wheel(params: WheelParams) -> WheelGeometry:
     """Build a :class:`WheelGeometry` from validated *params*."""
     validate_wheel(params)
@@ -115,7 +156,9 @@ def build_wheel(params: WheelParams) -> WheelGeometry:
     r_hi = ro + ext
     step = 2.0 * math.pi / m
 
-    spiral = params.segment_shape == "spiral"
+    shape = params.segment_shape
+    spiral = shape == "spiral"
+    follow_curve = bool(params.teeth_follow_curve) and not spiral
     if spiral:
         # A spiral boundary is a radial polyline whose angular offset ramps
         # linearly from 0 at r_lo to spiral_angle (rad) at r_hi — a steady twist
@@ -128,7 +171,7 @@ def build_wheel(params: WheelParams) -> WheelGeometry:
             (twist * i / nsamp, r_lo + (r_hi - r_lo) * i / nsamp) for i in range(nsamp + 1)
         ]
     else:
-        kind = SHAPE_TO_KIND[params.segment_shape]
+        kind = SHAPE_TO_KIND[shape]
 
     strips = []
     for k in range(m):
@@ -138,7 +181,10 @@ def build_wheel(params: WheelParams) -> WheelGeometry:
             wf = spiral_wf
         else:
             wf = waveform.boundary_points(0.0, amp_ang, params.num_fingers, r_lo, r_hi, kind)
-        pts = [(rho * math.cos(theta + da), rho * math.sin(theta + da)) for (da, rho) in wf]
+        if follow_curve:
+            pts = _polar_to_cartesian(theta, wf, q)
+        else:
+            pts = [(rho * math.cos(theta + da), rho * math.sin(theta + da)) for (da, rho) in wf]
         strip = LineString(pts).buffer(
             a / 2.0, cap_style="flat", join_style="round", quad_segs=ARC_QUAD_SEGS
         )

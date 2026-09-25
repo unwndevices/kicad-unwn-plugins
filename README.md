@@ -1,7 +1,7 @@
 # kicad-captouch
 
 A desktop tool that **parametrically generates capacitive-touch interface footprints** —
-self- and mutual-cap sliders, wheels, XY diamond trackpads, and button keypads — for KiCad,
+self- and mutual-cap sliders, wheels, XY diamond trackpads, button keypads, and single buttons — for KiCad,
 with a live visual preview. Each widget is emitted as a ready-to-use **footprint (`.kicad_mod`)**
 plus a matching **schematic symbol (`.kicad_sym`)**, written directly as KiCad S-expressions
 (no dependency on KiCad's in-flux scripting API), all **DRC-clean** in KiCad 9 and 10.
@@ -21,7 +21,7 @@ For the full parameter reference — every widget, flag, fab profile, and adviso
 
 ## What it generates
 
-Five widgets, all derived from one engine (`params` → `geometry` (Shapely) → `export`):
+Six widgets, all derived from one engine (`params` → `geometry` (Shapely) → `export`):
 
 - **Linear sliders** — a row of rectangular / chevron / interdigitated self-cap electrodes.
 - **Wheels** — the slider bent into a continuous annulus around a centre keep-out.
@@ -30,6 +30,8 @@ Five widgets, all derived from one engine (`params` → `geometry` (Shapely) →
 - **Mutual-cap (CSX) sliders** — the trackpad collapsed to one sense row: N nodes on `N + 1` pins.
 - **Button keypads** — an `R×C` grid of discrete self-cap buttons (rect / circle / diamond),
   one pin each.
+- **Buttons** — a single self-cap key, square or circular, with a solid / radial-snowflake /
+  comb / chevron / hatch fill and an optional grounded hat between the legs.
 
 Most widgets can be designed **from their overall size** (a target length, diameter, or panel
 W×H) instead of an element count. Every part ships in the **KiCad 9.0** S-expression format that
@@ -88,13 +90,15 @@ PCB-editor toolbar.
 > failed. Update to **KiCad 10.0.1+** (10.0.0 had a bug where IPC plugins didn't appear, and 10.0.1
 > surfaces plugin errors in the status bar), then see the
 > [plugin troubleshooting guide](plugins/captouch/README.md#troubleshooting) for how to read the pip log
-> and reset the venv.
+> and reset the venv. On **macOS**, KiCad 9/10 still ships **Python 3.9.13** — this plugin targets
+> 3.9 on purpose, so leave *Preferences → Plugins → Python interpreter* at KiCad's default. A custom
+> Homebrew 3.10+ interpreter is not required (and will fight KiCad's `PYTHONHOME`).
 
 ### Use it
 
 1. Open your board, then **Tools → External Plugins → Capacitive-Touch Generator** (or the toolbar
    button).
-2. Design a slider / wheel / trackpad / mutual-slider / keypad with the live preview.
+2. Design a slider / wheel / trackpad / mutual-slider / keypad / button with the live preview.
 3. **Add to KiCad project** → confirm the destination (defaults to a project-local `captouch`
    library; footprint and symbol can target different or global libraries).
 4. In the PCB editor press <kbd>A</kbd> and pick `captouch:<name>` to place the footprint; add the
@@ -132,6 +136,7 @@ captouch wheel --preset st_rotary                # rotary wheel from a vendor pr
 captouch trackpad --num-rows 4 --num-cols 5      # 4×5 mutual-cap diamond pad
 captouch mutual-slider --num-segments 6          # 6-node mutual-cap (CSX) slider
 captouch keypad --num-rows 4 --num-cols 3        # 4×3 self-cap button grid
+captouch button --preset snowflake               # single 12 mm radial-leg button
 captouch slider --length 100                     # size from overall length, not a count
 captouch <widget> --help                         # full parameter list for any widget
 ```

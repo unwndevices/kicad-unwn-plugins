@@ -20,6 +20,7 @@ from kicad_core.sexpr import Sym
 
 from .. import __version__
 from ..geometry import (
+    ButtonGeometry,
     KeypadGeometry,
     SliderGeometry,
     SupportCopper,
@@ -39,10 +40,12 @@ from ..params.support import SupportParams
 
 #: Any widget geometry the exporter can serialise (duck-typed: ``electrodes``,
 #: ``bounds``, ``params.name``, ``fab_primitives``, ``courtyard_outline``).
-WidgetGeometry = Union[SliderGeometry, WheelGeometry, TrackpadGeometry, KeypadGeometry]
-# Widgets whose copper is one custom pad per electrode (slider, wheel, keypad). The
-# trackpad's copper spans many polygons per net, so it has its own exporter.
-ElectrodeGeometry = Union[SliderGeometry, WheelGeometry, KeypadGeometry]
+WidgetGeometry = Union[
+    SliderGeometry, WheelGeometry, TrackpadGeometry, KeypadGeometry, ButtonGeometry
+]
+# Widgets whose copper is one custom pad per electrode (slider, wheel, keypad, button).
+# The trackpad's copper spans many polygons per net, so it has its own exporter.
+ElectrodeGeometry = Union[SliderGeometry, WheelGeometry, KeypadGeometry, ButtonGeometry]
 
 # KiCad 9.0 footprint/board S-expression format version (date token). KiCad 10
 # reads and upgrades it; emitting a newer token would make KiCad 9 reject it.
@@ -499,6 +502,16 @@ def keypad_footprint(geo: KeypadGeometry) -> list:
 
 def keypad_footprint_text(geo: KeypadGeometry) -> str:
     """Serialise a keypad footprint to `.kicad_mod` text (trailing newline)."""
+    return widget_footprint_text(geo)
+
+
+def button_footprint(geo: ButtonGeometry) -> list:
+    """Build a button footprint node (see :func:`widget_footprint`)."""
+    return widget_footprint(geo)
+
+
+def button_footprint_text(geo: ButtonGeometry) -> str:
+    """Serialise a button footprint to `.kicad_mod` text (trailing newline)."""
     return widget_footprint_text(geo)
 
 

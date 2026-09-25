@@ -7,7 +7,7 @@ name = "kicad-core"
 version = "0.1.0"
 description = "Lean shared primitives (KiCad S-expression read/emit) for the kicad-unwn-plugins tools"
 readme = "README.md"
-requires-python = ">=3.10"
+requires-python = ">=3.9"
 license = "GPL-3.0-or-later"
 license-files = ["LICENSE"]
 authors = [{ name = "Ciro Caputo Viglione" }]

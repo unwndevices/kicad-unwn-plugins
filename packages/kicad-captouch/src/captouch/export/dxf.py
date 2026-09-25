@@ -31,6 +31,7 @@ from pathlib import Path
 from typing import Sequence, Union
 
 from ..geometry import (
+    ButtonGeometry,
     KeypadGeometry,
     SliderGeometry,
     TrackpadGeometry,
@@ -43,7 +44,9 @@ from ..geometry.zones import NETTIE_DIAMETER
 #: Any widget geometry the DXF exporter can serialise (duck-typed on ``params``,
 #: ``bounds``, ``fab_primitives``, ``courtyard_outline``, and either ``electrodes``
 #: or ``nets``). ``MutualSliderGeometry`` is a ``TrackpadGeometry`` subtype.
-WidgetGeometry = Union[SliderGeometry, WheelGeometry, TrackpadGeometry, KeypadGeometry]
+WidgetGeometry = Union[
+    SliderGeometry, WheelGeometry, TrackpadGeometry, KeypadGeometry, ButtonGeometry
+]
 
 Point = tuple[float, float]
 
