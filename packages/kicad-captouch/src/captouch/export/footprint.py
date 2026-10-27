@@ -587,6 +587,7 @@ def trackpad_footprint(geo: TrackpadGeometry) -> list:
             )
     if geo.islands:
         gnd = net_tie_number(geo)
+        assert gnd is not None  # islands always give the widget a GND number
         # Anchored on the island's own via, whose pad lies wholly inside the island.
         island_anchor = min(2 * ANCHOR_RADIUS, p.island_via_diameter)
         for isl in geo.islands:

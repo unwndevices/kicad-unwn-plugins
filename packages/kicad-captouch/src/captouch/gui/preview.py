@@ -389,12 +389,13 @@ class PreviewView(QGraphicsView):
             # F.Cu copper (diamonds + Rx necks; framed: frames, whose holes need a path).
             for poly in net.fcu:
                 pen, brush = self._cosmetic_pen(_COPPER_EDGE, 1.2), QBrush(_COPPER_FILL)
+                fcu_item: QGraphicsPolygonItem | QGraphicsPathItem
                 if poly.interiors:
-                    item = self._scene.addPath(_qpath(poly), pen, brush)
+                    fcu_item = self._scene.addPath(_qpath(poly), pen, brush)
                 else:
-                    item = self._scene.addPolygon(_qpoly(polygon_points(poly)), pen, brush)
-                self._register("copper", item)
-                items.append(item)
+                    fcu_item = self._scene.addPolygon(_qpoly(polygon_points(poly)), pen, brush)
+                self._register("copper", fcu_item)
+                items.append(fcu_item)
             # Vias: outer annulus + drilled hole.
             for via in net.vias:
                 ax, ay = via.at
