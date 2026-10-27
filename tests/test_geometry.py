@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 import pytest
-from shapely.geometry import Point
+from shapely.geometry import Point, box
+from shapely.ops import unary_union
 
 from captouch.geometry import build_slider
+from captouch.geometry._base import hole_free_parts
 from captouch.params import SliderParams
 
 SHAPES = ["rectangular", "chevron", "interdigitated"]
@@ -104,3 +106,13 @@ def test_rectangular_segments_have_expected_width():
         minx, miny, maxx, maxy = e.polygon.bounds
         assert (maxx - minx) == pytest.approx(geo.params.width, abs=1e-3)
         assert (maxy - miny) == pytest.approx(geo.params.segment_height, abs=1e-3)
+
+
+def test_hole_free_parts_rebuilds_polygon_with_holes():
+    # Two holes, like a row of framed diamonds.
+    poly = box(0, 0, 10, 4).difference(box(1, 1, 3, 3)).difference(box(6, 1, 8, 3))
+    parts = hole_free_parts(poly)
+    assert all(not p.interiors for p in parts)
+    assert unary_union(parts).symmetric_difference(poly).area < 1e-9
+    solid = box(0, 0, 1, 1)
+    assert hole_free_parts(solid) == [solid]

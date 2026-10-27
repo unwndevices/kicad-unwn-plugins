@@ -303,6 +303,85 @@ def test_trackpad_panel_sized_drc_clean(w, h, tmp_path):
     assert report["unconnected_items"] == [], report["unconnected_items"]
 
 
+@pytest.mark.parametrize(
+    "kw",
+    [
+        {"num_rows": 3, "num_cols": 3},
+        {"num_rows": 4, "num_cols": 5},
+        {"num_rows": 6, "num_cols": 6, "mask_shape": "circle"},
+        {"num_rows": 6, "num_cols": 6, "mask_shape": "circle", "clip_mode": "conform"},
+        {"num_rows": 6, "num_cols": 6, "mask_shape": "rrect", "corner_radius": 2.0},
+        {
+            "num_rows": 7,
+            "num_cols": 7,
+            "diamond_pitch": 6.0,
+            "mask_shape": "circle",
+            "clip_mode": "conform",
+        },
+        {"num_rows": 6, "num_cols": 5, "panel_width": 23.0, "panel_height": 28.0},
+        {"num_rows": 4, "num_cols": 5, "ground_hatch": True, "guard_ring": True},
+    ],
+)
+def test_framed_trackpad_drc_clean(kw, tmp_path):
+    # Framed (IQS9150-style) electrodes: the closed frames are multi-primitive pads
+    # whose merged copper must keep its holes (else the GND islands inside short to
+    # it), every island must clear its frame by core_gap, and every island via must
+    # reach the ground plane — an empty unconnected_items proves the GND islands are
+    # all tied together through it, and the Rx/Tx nets still connected.
+    geo = build_trackpad(
+        TrackpadParams(name="CT_Trackpad", electrode_style="framed", min_feature=0.15, **kw)
+    )
+    assert geo.islands
+    board = tmp_path / "board.kicad_pcb"
+    board.write_text(widget_board_text(geo, nets=trackpad_net_map(geo), ground_plane=True))
+    report = _drc(board, tmp_path / "drc.json", refill=True)
+    assert report["violations"] == [], report["violations"]
+    assert report["unconnected_items"] == [], report["unconnected_items"]
+
+
+def test_framed_trackpad_islands_need_the_ground_plane(tmp_path):
+    # Negative control: without a ground layer the islands are isolated GND copper,
+    # so DRC must report them unconnected — the islands really are on GND and the
+    # connectivity gate above is not vacuous.
+    geo = build_trackpad(
+        TrackpadParams(name="CT_Trackpad", num_rows=3, num_cols=3, electrode_style="framed")
+    )
+    board = tmp_path / "board.kicad_pcb"
+    board.write_text(widget_board_text(geo, nets=trackpad_net_map(geo)))
+    report = _drc(board, tmp_path / "drc.json")
+    assert report["violations"] == [], report["violations"]
+    assert len(report["unconnected_items"]) == len(geo.islands) - 1
+
+
+def test_framed_trackpad_drc_catches_undersized_core_gap(tmp_path):
+    # Negative control: a core gap below the board clearance must be flagged.
+    geo = build_trackpad(
+        TrackpadParams(
+            name="TinyCore", num_rows=3, num_cols=3, electrode_style="framed", core_gap=0.1
+        )
+    )
+    board = tmp_path / "board.kicad_pcb"
+    board.write_text(widget_board_text(geo, nets=trackpad_net_map(geo), ground_plane=True))
+    report = _drc(board, tmp_path / "drc.json", refill=True)
+    assert [v for v in report["violations"] if v["type"] == "clearance"]
+
+
+def test_framed_trackpad_footprint_renders(tmp_path):
+    geo = build_trackpad(
+        TrackpadParams(name="CT_Trackpad", num_rows=4, num_cols=5, electrode_style="framed")
+    )
+    pretty = tmp_path / "lib.pretty"
+    pretty.mkdir()
+    (pretty / "CT_Trackpad.kicad_mod").write_text(footprint.trackpad_footprint_text(geo))
+    svg_dir = tmp_path / "svg"
+    svg_dir.mkdir()
+    proc = _run(
+        "fp", "export", "svg", "--footprint", "CT_Trackpad", "--output", str(svg_dir), str(pretty)
+    )
+    assert proc.returncode == 0 and "Error" not in proc.stdout, proc.stdout + proc.stderr
+    assert (svg_dir / "CT_Trackpad.svg").exists()
+
+
 def test_trackpad_drc_catches_undersized_gap(tmp_path):
     # Negative control: shrinking the gap (and neck) below the fab clearance MUST
     # be flagged — proving Rx and Tx sit on distinct nets and the gate is real.

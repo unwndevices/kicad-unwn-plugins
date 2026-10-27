@@ -242,6 +242,22 @@ def test_trackpad_has_two_copper_layers_and_via_circles():
     )
 
 
+def test_framed_trackpad_draws_frames_islands_and_ground_vias():
+    geo = build_trackpad(
+        TrackpadParams(name="CT_Trackpad", num_rows=3, num_cols=3, electrode_style="framed")
+    )
+    ents = _entities(_tags(dxf.widget_dxf_text(geo)))
+    # Every ring of the frames (outline + core holes) and every island outline.
+    rings = sum(1 + len(g.interiors) for n in geo.nets for g in n.fcu)
+    rings += len(geo.islands)
+    assert len(_by_layer(ents, "F.Cu", "POLYLINE")) == rings
+    circles = _by_layer(ents, "Vias", "CIRCLE")
+    island_r = geo.params.island_via_diameter / 2.0
+    ground = [c for c in circles if c["radius"] == pytest.approx(island_r, abs=1e-4)]
+    assert len(circles) == sum(len(n.vias) for n in geo.nets) + len(geo.islands)
+    assert len(ground) >= len(geo.islands)
+
+
 def test_mutual_slider_round_trips():
     geo = build_mutual_slider(MutualSliderParams(name="CT_MutualSlider"))
     ents = _entities(_tags(dxf.widget_dxf_text(geo)))

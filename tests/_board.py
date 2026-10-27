@@ -9,7 +9,7 @@ it — the "it opens and passes DRC in KiCad" gate from the roadmap.
 from __future__ import annotations
 
 from captouch.export import footprint
-from captouch.geometry import TrackpadGeometry
+from captouch.geometry import TrackpadGeometry, net_tie_number
 from kicad_core import sexpr
 from kicad_core.sexpr import Sym
 
@@ -78,8 +78,12 @@ def _stamp_net(pad: list, net_of: dict) -> list:
 
 
 def trackpad_net_map(geo: TrackpadGeometry) -> dict:
-    """``{pad_number: (net_index, net_name)}`` — one distinct net per Rx/Tx line."""
-    return {n.pad_number: (i + 1, n.pin_name) for i, n in enumerate(geo.nets)}
+    """``{pad_number: (net_index, net_name)}`` — one distinct net per Rx/Tx line,
+    plus ``GND`` for a framed pad's core islands."""
+    nets = {n.pad_number: (i + 1, n.pin_name) for i, n in enumerate(geo.nets)}
+    if geo.islands:
+        nets[net_tie_number(geo)] = (len(geo.nets) + 1, "GND")
+    return nets
 
 
 def _edge_cuts(geo, at: tuple[float, float], margin: float) -> list:
@@ -96,19 +100,33 @@ def _edge_cuts(geo, at: tuple[float, float], margin: float) -> list:
     ]
 
 
+def _ground_plane(geo, at: tuple[float, float], margin: float, net: tuple[int, str]) -> list:
+    """A solid board-level B.Cu zone over the whole board on *net* — the ground
+    layer a framed trackpad's island vias drop to (refill it: ``--refill-zones``)."""
+    minx, miny, maxx, maxy = geo.bounds
+    x0, y0 = at[0] + minx - margin, at[1] + miny - margin
+    x1, y1 = at[0] + maxx + margin, at[1] + maxy + margin
+    zone = footprint._zone(
+        [(x0, y0), (x1, y0), (x1, y1), (x0, y1)], layer="B.Cu", min_thickness=0.25
+    )
+    return _stamp_zone_net(zone, *net)
+
+
 def widget_board_text(
     geo,
     *,
     at: tuple[float, float] = (100.0, 100.0),
     margin: float = 8.0,
     nets: dict | None = None,
+    ground_plane: bool = False,
 ) -> str:
     """Serialise a minimal board with the widget placed and a board outline.
 
     *nets* (``{pad_number: (index, name)}``, e.g. from :func:`trackpad_net_map`)
     assigns a real net per pad number so DRC genuinely checks inter-net clearance
     and cross-layer connectivity. Omitted (slider/wheel) → all copper is netless,
-    which KiCad still clearance-checks.
+    which KiCad still clearance-checks. ``ground_plane`` adds a solid B.Cu zone on
+    the ``GND`` net of *nets* (run DRC with ``refill=True``).
     """
     if isinstance(geo, TrackpadGeometry):
         fp_node = footprint.trackpad_footprint(geo)
@@ -134,6 +152,9 @@ def widget_board_text(
         _edge_cuts(geo, at, margin),
         fp,
     ]
+    if ground_plane:
+        gnd = next(v for v in nets.values() if v[1] == "GND")
+        board.append(_ground_plane(geo, at, margin, gnd))
     return sexpr.dumps(board) + "\n"
 
 

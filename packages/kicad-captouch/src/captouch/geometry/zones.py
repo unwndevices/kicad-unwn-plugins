@@ -72,12 +72,15 @@ class SupportCopper:
 
 
 def net_tie_number(geo: SupportGeometry) -> str | None:
-    """Pad/pin number for the ``GND`` net-tie, or ``None`` if no support copper.
+    """Pad/pin number of the widget's ``GND`` net, or ``None`` if it has no GND copper.
 
-    One past the highest electrode / net number, so it never collides. Shared by
-    the footprint (pad) and symbol (pin) exporters so they stay 1:1.
+    GND copper is the optional support copper (via its net-tie pad) and/or a framed
+    trackpad's core islands; both share this one number. One past the highest
+    electrode / net number, so it never collides. Shared by the footprint (pad) and
+    symbol (pin) exporters so they stay 1:1.
     """
-    if not has_support(geo.params):
+    islands = isinstance(geo, TrackpadGeometry) and bool(geo.islands)
+    if not (has_support(geo.params) or islands):
         return None
     if isinstance(geo, TrackpadGeometry):
         nums = [int(n.pad_number) for n in geo.nets]

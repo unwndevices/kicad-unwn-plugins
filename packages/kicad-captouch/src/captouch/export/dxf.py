@@ -258,6 +258,10 @@ def widget_dxf_text(geo: WidgetGeometry) -> str:
                     dwg.polyline(ring, "B.Cu")
             for via in net.vias:
                 dwg.circle(via.at, geo.params.via_diameter / 2.0, "Vias")
+        for isl in geo.islands:  # framed: GND core islands + their ground vias
+            for ring in _polygon_rings(isl.copper):
+                dwg.polyline(ring, "F.Cu")
+            dwg.circle(isl.via.at, geo.params.island_via_diameter / 2.0, "Vias")
     else:
         for e in geo.electrodes:
             dwg.polyline(e.points, "F.Cu")

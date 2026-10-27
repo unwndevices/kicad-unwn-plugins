@@ -14,7 +14,8 @@ from __future__ import annotations
 import math
 from dataclasses import dataclass
 
-from shapely.geometry import Polygon
+from shapely.geometry import LineString, Polygon
+from shapely.ops import split
 
 __all__ = [
     "Point",
@@ -25,6 +26,7 @@ __all__ = [
     "RRECT_ARC_SEGS",
     "round_corners",
     "anchor_point",
+    "hole_free_parts",
     "polygon_points",
     "rounded_rect_points",
     "tip_relief_radius",
@@ -96,6 +98,30 @@ def polygon_points(poly: Polygon) -> list[Point]:
     if coords and coords[0] == coords[-1]:
         coords = coords[:-1]
     return [(round(x, ROUND), round(y, ROUND)) for x, y in coords]
+
+
+def hole_free_parts(poly: Polygon) -> list[Polygon]:
+    """Split *poly* into hole-free polygons whose union is *poly*.
+
+    A KiCad custom-pad primitive is a simple outline, so copper with holes (a framed
+    trackpad electrode) is emitted as several primitives of one pad, which KiCad
+    merges back with the holes intact. Each hole is cut by a vertical line through
+    an interior point of it; the pieces abut exactly along the cuts. A hole-free
+    *poly* comes back as ``[poly]`` unchanged.
+    """
+    if not poly.interiors:
+        return [poly]
+    pending, out = [poly], []
+    while pending:
+        g = pending.pop()
+        if not g.interiors:
+            out.append(g)
+            continue
+        hx = Polygon(g.interiors[0]).representative_point().x
+        _, miny, _, maxy = g.bounds
+        cut = LineString([(hx, miny - 1.0), (hx, maxy + 1.0)])
+        pending.extend(p for p in split(g, cut).geoms if isinstance(p, Polygon))
+    return sorted(out, key=lambda p: (p.bounds[0], p.bounds[1]))
 
 
 def rounded_rect_points(

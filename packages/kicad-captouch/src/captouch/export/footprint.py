@@ -15,6 +15,8 @@ from __future__ import annotations
 
 from typing import Sequence, Union
 
+from shapely.ops import polylabel
+
 from kicad_core import sexpr
 from kicad_core.sexpr import Sym
 
@@ -30,11 +32,13 @@ from ..geometry import (
 from ..geometry._base import (
     ANCHOR_RADIUS,
     COURTYARD_MARGIN,
+    ROUND,
     anchor_point,
+    hole_free_parts,
     polygon_points,
     rounded_rect_points,
 )
-from ..geometry.zones import NETTIE_DIAMETER, NETTIE_DRILL
+from ..geometry.zones import NETTIE_DIAMETER, NETTIE_DRILL, net_tie_number
 from ..params.support import SupportParams
 
 #: Any widget geometry the exporter can serialise (duck-typed: ``electrodes``,
@@ -182,6 +186,46 @@ def custom_polygon_pad(
             [Sym("gr_poly"), _pts(rel), [Sym("width"), 0], [Sym("fill"), Sym("yes")]],
         ],
     ]
+
+
+def copper_pad(
+    poly,
+    *,
+    number: str,
+    layer: str,
+    at: Point | None = None,
+    anchor: float = 2 * ANCHOR_RADIUS,
+) -> list:
+    """A custom pad covering a shapely polygon, holes included.
+
+    A hole-free polygon is exactly :func:`custom_polygon_pad`. One with holes (a
+    framed trackpad electrode) is split by :func:`hole_free_parts` and emitted as
+    one ``gr_poly`` primitive per piece; KiCad merges a pad's primitives, so the
+    pad copper is the original polygon with its holes intact (verified with a
+    different-net pad inside the hole: DRC clean, and a short once it overlaps).
+
+    *at* defaults to the polygon's pole of inaccessibility, with the *anchor*
+    circle shrunk to fit there — a frame band can be narrower than the default
+    anchor, and :func:`anchor_point`'s negative buffer is unreliable on a band
+    exactly twice its radius wide (GEOS can return the core hole as "interior"),
+    which would put anchor copper in the core gap.
+    """
+    if at is None:
+        pole = polylabel(poly, tolerance=0.005)
+        at = (round(pole.x, ROUND), round(pole.y, ROUND))
+        # Keep 1e-4 mm in hand for the rounded anchor position.
+        fit = 2.0 * (poly.boundary.distance(pole) - 1e-4)
+        anchor = round(min(anchor, fit), ROUND)
+    parts = hole_free_parts(poly)
+    pad = custom_polygon_pad(
+        polygon_points(parts[0]), number=number, at=at, layer=layer, anchor=anchor
+    )
+    prims = sexpr.find(pad, "primitives")
+    ax, ay = at
+    for part in parts[1:]:
+        rel = [(round(x - ax, 6), round(y - ay, 6)) for x, y in polygon_points(part)]
+        prims.append([Sym("gr_poly"), _pts(rel), [Sym("width"), 0], [Sym("fill"), Sym("yes")]])
+    return pad
 
 
 def via_pad(
@@ -509,7 +553,9 @@ def keypad_footprint_text(geo: KeypadGeometry) -> str:
 # it cannot use the one-pad-per-electrode `widget_footprint`. Each net emits one
 # custom pad per F.Cu piece, one per B.Cu strap, and one thru-hole via pad per
 # bridge — all sharing the net's pad number, so KiCad reads them as one net and
-# the vias complete the cross-layer connection.
+# the vias complete the cross-layer connection. A framed pad's frames carry holes
+# (one multi-primitive pad each) and its GND core islands add one custom pad + one
+# thru-hole via each, all on the shared GND number (zones.net_tie_number).
 def trackpad_footprint(geo: TrackpadGeometry) -> list:
     """Build a footprint node for a trackpad from its :class:`TrackpadGeometry`."""
     name = geo.params.name
@@ -523,6 +569,9 @@ def trackpad_footprint(geo: TrackpadGeometry) -> list:
     pads: list = []
     for net in geo.nets:
         for poly in net.fcu:
+            if p.framed:  # frame bands (with holes): hole-aware, band-safe anchor
+                pads.append(copper_pad(poly, number=net.pad_number, layer="F.Cu"))
+                continue
             pts = polygon_points(poly)
             pads.append(
                 custom_polygon_pad(pts, number=net.pad_number, at=anchor_point(poly), layer="F.Cu")
@@ -535,6 +584,24 @@ def trackpad_footprint(geo: TrackpadGeometry) -> list:
         for via in net.vias:
             pads.append(
                 via_pad(via.at, number=net.pad_number, drill=p.via_drill, diameter=p.via_diameter)
+            )
+    if geo.islands:
+        gnd = net_tie_number(geo)
+        # Anchored on the island's own via, whose pad lies wholly inside the island.
+        island_anchor = min(2 * ANCHOR_RADIUS, p.island_via_diameter)
+        for isl in geo.islands:
+            pads.append(
+                copper_pad(
+                    isl.copper, number=gnd, layer="F.Cu", at=isl.via.at, anchor=island_anchor
+                )
+            )
+            pads.append(
+                via_pad(
+                    isl.via.at,
+                    number=gnd,
+                    drill=p.island_via_drill,
+                    diameter=p.island_via_diameter,
+                )
             )
 
     extra = _support_extra_nodes(sc, geo.params) if sc is not None else []
