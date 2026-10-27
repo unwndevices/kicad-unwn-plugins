@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "kicad-captouch"
-version = "0.1.0"
+version = "0.2.0"
 description = "Parametric generator for capacitive-touch interface footprints (sliders, wheels, XY pads) for KiCad"
 readme = "README.md"
 requires-python = ">=3.10"

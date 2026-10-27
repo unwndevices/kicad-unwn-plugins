@@ -1,7 +1,7 @@
 (footprint "CT_MutualSlider_5"
 	(version 20241229)
 	(generator "kicad-captouch")
-	(generator_version "0.1.0")
+	(generator_version "0.2.0")
 	(layer "F.Cu")
 	(property "Reference" "REF**"
 		(at 0 -4.5 0)
