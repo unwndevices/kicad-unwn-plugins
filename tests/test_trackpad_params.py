@@ -216,3 +216,75 @@ def test_radius_rejected_unless_circle():
 def test_non_finite_float_rejected(bad):
     with pytest.raises(TrackpadError, match="finite"):
         validate_trackpad(TrackpadParams(diamond_pitch=bad))
+
+
+# -- framed (Azoteq IQS9150-style) electrode style ----------------------------- #
+FRAMED = dict(electrode_style="framed")
+
+
+def test_default_electrode_style_is_solid():
+    assert TrackpadParams().electrode_style == "solid"
+    assert not TrackpadParams().framed
+
+
+def test_reject_unknown_electrode_style():
+    with pytest.raises(TrackpadError, match="electrode_style"):
+        validate_trackpad(TrackpadParams(electrode_style="hollow"))
+
+
+def test_framed_defaults_validate():
+    p = validate_trackpad(TrackpadParams(**FRAMED))
+    assert p.framed
+
+
+def test_framed_derived_diagonals():
+    p = TrackpadParams(**FRAMED, frame_width=0.5, core_gap=0.25)
+    s2 = math.sqrt(2.0)
+    assert p.frame_inner_half_diag == pytest.approx(p.half_diag - 0.5 * s2)
+    assert p.island_half_diag == pytest.approx(p.half_diag - 0.75 * s2)
+
+
+def test_framed_fields_are_inert_when_solid():
+    # Nonsense framed values must not block a solid pad.
+    validate_trackpad(TrackpadParams(frame_width=-1.0, core_gap=0.0, island_via_diameter=0.0))
+
+
+@pytest.mark.parametrize(
+    "kw,match",
+    [
+        ({"frame_width": 0.0}, "frame_width"),
+        ({"core_gap": 0.0}, "core_gap"),
+        ({"island_via_drill": 0.0}, "island_via_drill"),
+        ({"island_via_drill": 0.3, "island_via_diameter": 0.45}, "annular"),
+        # Bridge via centre (0.6 mm in from the tip) off a 0.4 mm frame (0.566 along axis).
+        ({"frame_width": 0.4}, "frame_width·√2"),
+        # Island left too small for its via.
+        ({"frame_width": 1.0, "core_gap": 0.4}, "too small"),
+    ],
+)
+def test_framed_rejects(kw, match):
+    with pytest.raises(TrackpadError, match=match):
+        validate_trackpad(TrackpadParams(**FRAMED, **kw))
+
+
+def test_framed_island_via_must_clear_bridge_vias():
+    # Fat bridge vias (on a frame wide enough to hold them) notch the Tx islands
+    # deeply: a Ø1.0 island via still fits the island's inscribed circle (r 0.568)
+    # but not the notched reach (0.411 mm).
+    kw = dict(frame_width=0.7, via_drill=0.5, via_diameter=0.95)
+    kw.update(island_via_drill=0.6, island_via_diameter=1.0)
+    with pytest.raises(TrackpadError, match="does not clear"):
+        validate_trackpad(TrackpadParams(**FRAMED, **kw))
+
+
+def test_framed_frame_must_exceed_min_feature_on_curved_mask():
+    with pytest.raises(TrackpadError, match="min_feature"):
+        validate_trackpad(
+            TrackpadParams(
+                **FRAMED,
+                num_rows=4,
+                num_cols=4,
+                mask_shape="circle",
+                min_feature=0.5,
+            )
+        )

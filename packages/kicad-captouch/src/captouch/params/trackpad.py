@@ -26,6 +26,14 @@ Geometry (``geometry/trackpad.py``):
 * the lattice is clipped to the panel rectangle so every edge terminates in a
   **half-diamond** (Infineon AN234185 §4.3).
 
+Two electrode styles share that lattice (``electrode_style``, see
+:data:`ELECTRODE_STYLES`): ``"solid"`` diamonds (the default), or ``"framed"``
+diamonds modelled on the Azoteq IQS9150 reference layout — each diamond becomes a
+``frame_width`` copper **frame** carrying its Rx/Tx net, a ``core_gap`` clearance,
+and a solid **GND core island** with one via (``island_via_*``) at its centre down
+to a ground layer. The necks, bridges, vias, masks and pin mapping are unchanged;
+mutual coupling lives on the frame-to-frame edges and the islands shield.
+
 This module has **no KiCad, geometry, or Qt imports** — it is pure data.
 """
 
@@ -56,6 +64,7 @@ __all__ = [
     "TRACKPAD_PRESETS",
     "MASK_SHAPES",
     "CLIP_MODES",
+    "ELECTRODE_STYLES",
     "DISABLE_AREA_FRACTION",
     "DEVICES",
 ]
@@ -97,6 +106,16 @@ CLIP_MODES = ("inscribe", "conform")
 #: F.Cu electrode area is flagged for firmware disabling — Azoteq AZD068 §6's
 #: ">50 % area removed → disable" rule of thumb.
 DISABLE_AREA_FRACTION = 0.5
+
+#: How each lattice diamond is drawn:
+#:
+#: * ``"solid"`` — a filled diamond of the line's net (the classic pattern).
+#: * ``"framed"`` — the Azoteq IQS9150 reference style: a closed ``frame_width``
+#:   copper frame of the line's net, a ``core_gap`` clearance, and a GND core
+#:   island with one via at its centre.
+ELECTRODE_STYLES = ("solid", "framed")
+
+_SQRT2 = math.sqrt(2.0)
 
 
 class TrackpadError(SliderError):
@@ -185,6 +204,20 @@ class TrackpadParams:
         set to a key in :data:`DEVICES` the build additionally enforces the chip's
         ``max_rx`` (rows), ``max_tx`` (cols), and ``max_nodes`` limits (e.g. the
         IQS550's 10 Rx × 15 Tx / 150 nodes). See :mod:`captouch.params.device`.
+    electrode_style:
+        ``"solid"`` (default) or ``"framed"`` — see :data:`ELECTRODE_STYLES`. The
+        four fields below are used (and validated) only when ``"framed"``.
+    frame_width:
+        Width (mm) of the copper frame band, measured perpendicular to the diamond
+        edges. The reference layout uses 0.5 mm.
+    core_gap:
+        Clearance (mm) between a frame's inner edge and its GND core island. The
+        reference netclass clearance is 0.18 mm;
+        the 0.25 mm default leaves margin over the common 0.2 mm DRC default.
+    island_via_drill, island_via_diameter:
+        Finished hole / outer copper diameter (mm) of the via at each island's
+        centre that ties it to the ground layer
+        (``island_via_diameter >= island_via_drill + 2*MIN_ANNULAR``).
     ground_hatch, ground_margin, ground_hatch_width, ground_hatch_pitch,
     guard_ring, guard_width, guard_gap, guard_break, guard_mask_open:
         Optional, **default-off** board-level support copper (the guard / ESD ring
@@ -212,6 +245,13 @@ class TrackpadParams:
     name: str = "CT_Trackpad"
     device: str | None = None
 
+    # -- electrode style (default solid; the framed fields are inert otherwise) - #
+    electrode_style: str = "solid"
+    frame_width: float = 0.5
+    core_gap: float = 0.25
+    island_via_drill: float = 0.3
+    island_via_diameter: float = 0.6
+
     # -- optional board-level support copper (default off) ----------------- #
     ground_hatch: bool = False
     ground_margin: float = GROUND_MARGIN
@@ -238,6 +278,21 @@ class TrackpadParams:
     def diamond_diag(self) -> float:
         """Full diamond diagonal (vertex-to-opposite-vertex), ``2·d``."""
         return 2.0 * self.half_diag
+
+    @property
+    def framed(self) -> bool:
+        """``True`` for the IQS9150-style framed electrodes (frame + GND island)."""
+        return self.electrode_style == "framed"
+
+    @property
+    def frame_inner_half_diag(self) -> float:
+        """Half-diagonal of a frame's inner edge, ``d − frame_width·√2`` (framed)."""
+        return self.half_diag - self.frame_width * _SQRT2
+
+    @property
+    def island_half_diag(self) -> float:
+        """Half-diagonal of the GND core island, ``d − (frame_width + core_gap)·√2``."""
+        return self.half_diag - (self.frame_width + self.core_gap) * _SQRT2
 
     @property
     def num_rx(self) -> int:
@@ -392,7 +447,62 @@ def validate_trackpad(p: TrackpadParams, *, min_lines: int = MIN_LINES) -> Track
             f"its tip and of the perpendicular axis"
         )
     _validate_mask(p)
+    _validate_framed(p)
     return p
+
+
+def _validate_framed(p: TrackpadParams) -> None:
+    """Validate the framed-style fields (inert, so unchecked, for ``"solid"``)."""
+    if p.electrode_style not in ELECTRODE_STYLES:
+        raise TrackpadError(
+            f"electrode_style must be one of {ELECTRODE_STYLES}, got {p.electrode_style!r}"
+        )
+    if not p.framed:
+        return
+    if p.frame_width <= 0:
+        raise TrackpadError(f"frame_width must be > 0, got {p.frame_width}")
+    if p.core_gap <= 0:
+        raise TrackpadError(f"core_gap must be > 0, got {p.core_gap}")
+    if p.mask_shape != "rect" and p.frame_width <= p.min_feature:
+        raise TrackpadError(
+            f"frame_width {p.frame_width} mm must be > min_feature {p.min_feature} mm, "
+            f"else the curved-mask sliver filter erases the frames"
+        )
+    if p.island_via_drill <= 0:
+        raise TrackpadError(f"island_via_drill must be > 0, got {p.island_via_drill}")
+    if p.island_via_diameter < p.island_via_drill + 2.0 * MIN_ANNULAR:
+        raise TrackpadError(
+            f"island_via_diameter {p.island_via_diameter} mm must be >= island_via_drill "
+            f"+ 2·{MIN_ANNULAR} = {p.island_via_drill + 2.0 * MIN_ANNULAR:.3f} mm "
+            f"(min annular ring)"
+        )
+    # A Tx bridge via sits `via_diameter` in from its diamond's tip; its centre must
+    # land on the frame band (which spans frame_width·√2 in from the tip along the
+    # axis) so the via is joined to the frame rather than floating in the core gap.
+    if p.via_diameter > p.frame_width * _SQRT2:
+        raise TrackpadError(
+            f"via_diameter {p.via_diameter} mm must be <= frame_width·√2 = "
+            f"{p.frame_width * _SQRT2:.3f} mm so each bridge via centre lands on its frame "
+            f"— widen frame_width or use a smaller via"
+        )
+    iv_r = p.island_via_diameter / 2.0
+    # The island via pad must sit wholly inside the island (inscribed radius d/√2).
+    if p.island_half_diag / _SQRT2 < iv_r:
+        raise TrackpadError(
+            f"the GND core island (half-diagonal {p.island_half_diag:.3f} mm = diamond "
+            f"{p.half_diag:.3f} − (frame_width + core_gap)·√2) is too small for its "
+            f"{p.island_via_diameter} mm via — reduce frame_width/core_gap or the island "
+            f"via, or raise diamond_pitch"
+        )
+    # Tx islands are notched `core_gap` clear of the bridge vias; the island via (and,
+    # on B.Cu, the bridge strap ending at the same point) must still clear by core_gap.
+    reach = p.half_diag - 1.5 * p.via_diameter - p.core_gap
+    if reach < iv_r:
+        raise TrackpadError(
+            f"island via (Ø{p.island_via_diameter} mm) does not clear the Tx bridge vias / "
+            f"B.Cu straps by core_gap {p.core_gap} mm: need half-diagonal − 1.5·via_diameter "
+            f"− core_gap = {reach:.3f} mm >= {iv_r:.3f} mm"
+        )
 
 
 def _validate_mask(p: TrackpadParams) -> None:

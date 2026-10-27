@@ -77,6 +77,7 @@ from .support import (
 from .trackpad import (
     CLIP_MODES,
     DISABLE_AREA_FRACTION,
+    ELECTRODE_STYLES,
     MASK_SHAPES,
     MIN_LINES,
     TRACKPAD_PRESETS,
@@ -125,6 +126,7 @@ __all__ = [
     "TRACKPAD_PRESETS",
     "MASK_SHAPES",
     "CLIP_MODES",
+    "ELECTRODE_STYLES",
     "DISABLE_AREA_FRACTION",
     "MIN_LINES",
     "DeviceProfile",
