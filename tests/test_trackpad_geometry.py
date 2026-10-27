@@ -423,3 +423,119 @@ def test_rounded_rect_points_degenerate_radius_is_a_rectangle():
         (5.0, 4.0),
         (-5.0, 4.0),
     ]
+
+
+# -- framed (Azoteq IQS9150-style) electrodes ---------------------------------- #
+def _framed(**kw):
+    return build_trackpad(TrackpadParams(electrode_style="framed", **kw))
+
+
+def test_solid_has_no_islands():
+    assert build_trackpad(TrackpadParams(num_rows=3, num_cols=3)).islands == []
+
+
+@pytest.mark.parametrize("rows,cols", SIZES)
+def test_framed_island_per_diamond(rows, cols):
+    # Every Rx diamond (R·(C+1)) and Tx diamond (C·(R+1)), rim halves included,
+    # gets an island: a rect lattice drops no frame.
+    geo = _framed(num_rows=rows, num_cols=cols)
+    assert len(geo.islands) == rows * (cols + 1) + cols * (rows + 1)
+
+
+@pytest.mark.parametrize("rows,cols", SIZES)
+def test_framed_rx_row_is_one_polygon_of_closed_frames(rows, cols):
+    geo = _framed(num_rows=rows, num_cols=cols)
+    for net in geo.rx_nets:
+        assert len(net.fcu) == 1
+        # One hole per diamond: the C-1 interior ones plus the two rim halves'
+        # cores are open to the lattice edge, so C-1 interior rings.
+        assert len(net.fcu[0].interiors) == cols - 1
+
+
+def test_framed_interior_frame_area():
+    p = TrackpadParams(electrode_style="framed", num_rows=3, num_cols=3)
+    geo = build_trackpad(p)
+    d, dh = p.half_diag, p.frame_inner_half_diag
+    # Interior Rx diamond of the middle row (3x3 @5: Rx diamonds at x = ±2.5,
+    # ±7.5; y = 0): frame = outer − core.
+    cx = -2.5
+    probe = Polygon([(cx - d, 0), (cx, -d), (cx + d, 0), (cx, d)])
+    frame = unary_union(geo.nets[1].fcu).intersection(probe)  # Rx2, centre row
+    assert frame.area == pytest.approx(2 * d * d - 2 * dh * dh, rel=1e-6)
+
+
+@pytest.mark.parametrize(
+    "kw",
+    [
+        {},
+        {"mask_shape": "circle", "clip_mode": "conform", "min_feature": 0.15},
+        {"mask_shape": "circle", "clip_mode": "inscribe", "min_feature": 0.15},
+        {"mask_shape": "rrect", "corner_radius": 6.0, "clip_mode": "conform"},
+    ],
+)
+def test_framed_island_clearances(kw):
+    geo = _framed(num_rows=6, num_cols=6, **kw)
+    p = geo.params
+    assert geo.islands
+    copper = unary_union([g for n in geo.nets for g in n.fcu])
+    straps = unary_union([g for n in geo.nets for g in n.bcu])
+    bridge_vias = [Point(v.at) for n in geo.nets for v in n.vias]
+    iv_r = p.island_via_diameter / 2.0
+    for isl in geo.islands:
+        via = Point(isl.via.at)
+        # core_gap from every Rx/Tx frame (rounding slack only).
+        assert copper.distance(isl.copper) >= p.core_gap - 1e-4
+        # The bridge vias are true circles: island clear of their pads by core_gap.
+        for bv in bridge_vias:
+            assert bv.distance(isl.copper) >= p.via_diameter / 2 + p.core_gap - 1e-4
+        # The island via pad sits wholly inside its island ...
+        assert isl.copper.contains(via)
+        assert isl.copper.exterior.distance(via) >= iv_r - 1e-4
+        # ... and on B.Cu clears the Tx straps by core_gap.
+        assert straps.distance(via) >= iv_r + p.core_gap - 1e-4
+
+
+def test_framed_interior_island_via_at_diamond_centre():
+    geo = _framed(num_rows=3, num_cols=3)
+    vias = {isl.via.at for isl in geo.islands}
+    assert (-2.5, 0.0) in vias  # interior Rx diamond of the middle row
+    assert (0.0, -2.5) in vias  # interior Tx diamond (middle column, k=1)
+
+
+def test_framed_bridge_vias_land_on_their_frames():
+    geo = _framed(num_rows=4, num_cols=5)
+    for net in geo.tx_nets:
+        copper = unary_union(net.fcu)
+        for v in net.vias:
+            # The via pad disk is part of the frame copper.
+            disk = Point(v.at).buffer(geo.params.via_diameter / 2 - 1e-3)
+            assert copper.contains(disk)
+
+
+def test_framed_rect_reports_no_partial_channels():
+    geo = _framed(num_rows=4, num_cols=5)
+    assert geo.partial_channels() == []
+    assert all(f == 1.0 for row in geo.node_area_fraction() for f in row)
+
+
+def test_framed_conform_islands_only_inside_surviving_frames():
+    geo = _framed(num_rows=6, num_cols=6, mask_shape="circle", clip_mode="conform")
+    r = geo.params.effective_radius
+    copper = unary_union([g for n in geo.nets for g in n.fcu])
+    for isl in geo.islands:
+        assert Point(0, 0).distance(Point(isl.via.at)) < r
+        # Frame copper surrounds the island within a frame width + core gap.
+        reach = geo.params.frame_width + geo.params.core_gap + 1e-3
+        assert copper.intersection(isl.copper.buffer(reach)).area > 0.1
+
+
+def test_framed_conform_keeps_rx_rows_whole():
+    # Closed frames give two paths around every diamond, so a mask cut through one
+    # side of a rim frame does not sever the row (as a broken frame would).
+    solid = build_trackpad(
+        TrackpadParams(num_rows=6, num_cols=6, mask_shape="circle", clip_mode="conform")
+    )
+    geo = _framed(num_rows=6, num_cols=6, mask_shape="circle", clip_mode="conform")
+    for s, f in zip(solid.rx_nets, geo.rx_nets):
+        assert f.fcu[0].bounds[0] == pytest.approx(s.fcu[0].bounds[0], abs=0.2)
+        assert f.fcu[0].bounds[2] == pytest.approx(s.fcu[0].bounds[2], abs=0.2)

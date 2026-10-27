@@ -18,16 +18,26 @@ half-diagonal ``d = (P − A·√2)/2`` makes every Rx/Tx facing-edge gap exactl
 nominal ``A``; the connecting necks pinch tighter (~``A/√2``), as in any diamond
 pattern, which is why the DRC gate is the real correctness check.
 
+With ``electrode_style == "framed"`` (the Azoteq IQS9150 reference style) every
+diamond keeps its outline, necks and bridges but loses its core: the line's copper
+is a closed ``frame_width`` band (so its polygons carry holes — the exporters split
+them into hole-free primitives). Tx frames also carry a disk under each bridge via
+so the via always sits on its frame. Inside each frame, ``core_gap`` in, sits a GND
+core :class:`Island` (notched ``core_gap`` clear of any bridge via) with one via at
+its centre. Islands are not part of any Rx/Tx net, so the partial-channel and
+per-node area reports measure frame copper.
+
 **No KiCad or Qt imports.** Depends only on Shapely.
 """
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass, field
 
 from shapely.geometry import MultiPolygon, Polygon, box
 from shapely.geometry import Point as GeoPoint
-from shapely.ops import unary_union
+from shapely.ops import polylabel, unary_union
 
 from ..params import (
     DISABLE_AREA_FRACTION,
@@ -38,10 +48,15 @@ from ..params import (
 )
 from ._base import ARC_QUAD_SEGS, ROUND, GeometryError, Point, anchor_point
 
-__all__ = ["Via", "TrackpadNet", "TrackpadGeometry", "build_trackpad"]
+__all__ = ["Via", "Island", "TrackpadNet", "TrackpadGeometry", "build_trackpad"]
 
 #: Polygons below this area (mm²) after clipping are discarded as fab/DRC slivers.
 _SLIVER_AREA = 1e-3
+
+#: A framed diamond keeps its GND island only while at least this fraction of its
+#: own frame copper survives the mask (anything less is a neighbour's neck stub or
+#: a sliver, with no electrode left around the island).
+_MIN_FRAME_FRACTION = 0.1
 
 #: Quarter-circle segments for the curved mask boundary (disk / rounded-rect
 #: clip). Finer than the lean pad fillets so the clipped copper edge and the
@@ -54,6 +69,14 @@ class Via:
     """A plated thru-hole that ties a net's F.Cu copper to its B.Cu strap."""
 
     at: Point
+
+
+@dataclass(frozen=True)
+class Island:
+    """A framed diamond's GND core island and the via tying it to a ground layer."""
+
+    copper: Polygon  # F.Cu island copper
+    via: Via  # at the diamond centre (or the island's widest point if clipped)
 
 
 @dataclass(frozen=True)
@@ -82,6 +105,9 @@ class TrackpadGeometry:
     nets: list[TrackpadNet]
     bounds: tuple[float, float, float, float]  # (minx, miny, maxx, maxy)
     params: TrackpadParams
+    #: GND core islands of a ``"framed"`` pad (empty for ``"solid"``). They share
+    #: one GND pad/pin — :func:`~captouch.geometry.zones.net_tie_number`.
+    islands: list[Island] = field(default_factory=list)
 
     @property
     def rx_nets(self) -> list[TrackpadNet]:
@@ -165,9 +191,22 @@ class TrackpadGeometry:
                 box(x0 + c * P + d - bw, cy - bw / 2.0, x0 + (c + 1) * P - d + bw, cy + bw / 2.0)
                 for c in range(C)
             )
-        for c in range(C):
-            cx = x0 + (c + 0.5) * P
-            full_parts.extend(_diamond(cx, y0 + k * P, d) for k in range(R + 1))
+        if self.params.framed:
+            # Framed copper is the frames (minus every core), plus the Tx
+            # bridge-via disks — the same cells the builder emits.
+            rx_holes = [
+                _frame_hole(x0 + c * P, y0 + (r + 0.5) * P, self.params)
+                for r in range(R)
+                for c in range(C + 1)
+            ]
+            full_parts = [unary_union(full_parts).difference(unary_union(rx_holes))]
+            for c in range(C):
+                cx = x0 + (c + 0.5) * P
+                full_parts.extend(_tx_cell(cx, y0 + k * P, self.params) for k in range(R + 1))
+        else:
+            for c in range(C):
+                cx = x0 + (c + 0.5) * P
+                full_parts.extend(_diamond(cx, y0 + k * P, d) for k in range(R + 1))
         full_fcu = unary_union(full_parts)
         clipped_fcu = unary_union([g for n in self.nets for g in n.fcu])
 
@@ -202,6 +241,64 @@ class TrackpadGeometry:
 def _diamond(cx: float, cy: float, d: float) -> Polygon:
     """A rhombus (square rotated 45°) of half-diagonal *d* centred at (cx, cy)."""
     return Polygon([(cx - d, cy), (cx, cy - d), (cx + d, cy), (cx, cy + d)])
+
+
+def _frame_hole(cx: float, cy: float, p: TrackpadParams) -> Polygon:
+    """The core a framed diamond gives up: everything inside its frame band."""
+    return _diamond(cx, cy, p.frame_inner_half_diag)
+
+
+def _bridge_via_points(cx: float, cy: float, p: TrackpadParams) -> tuple[Point, Point]:
+    """Where a Tx diamond's two bridge vias sit (``via_diameter`` in from each tip)."""
+    voff = p.half_diag - p.via_diameter
+    return (cx, cy - voff), (cx, cy + voff)
+
+
+def _tx_cell(cx: float, cy: float, p: TrackpadParams) -> Polygon:
+    """A framed Tx diamond's copper: the broken frame plus a disk under each bridge
+    via position, so a via whose pad overhangs the band still sits on its frame."""
+    disks = [
+        GeoPoint(x, y).buffer(p.via_diameter / 2.0, quad_segs=_CLIP_QUAD_SEGS)
+        for x, y in _bridge_via_points(cx, cy, p)
+    ]
+    frame = _diamond(cx, cy, p.half_diag).difference(_frame_hole(cx, cy, p))
+    return unary_union([frame, *disks])
+
+
+def _island_shape(cx: float, cy: float, p: TrackpadParams, role: str) -> Polygon:
+    """A framed diamond's GND core island, before clipping. Tx islands are notched
+    ``core_gap`` clear of the bridge-via disks; the notch polygon circumscribes the
+    true circle so the clearance holds against KiCad's exact round via pad."""
+    island = _diamond(cx, cy, p.island_half_diag)
+    if role == "rx":
+        return island
+    r = (p.via_diameter / 2.0 + p.core_gap) / math.cos(math.pi / (4 * _CLIP_QUAD_SEGS))
+    notches = [
+        GeoPoint(x, y).buffer(r, quad_segs=_CLIP_QUAD_SEGS)
+        for x, y in _bridge_via_points(cx, cy, p)
+    ]
+    return island.difference(unary_union(notches))
+
+
+def _island(
+    cx: float, cy: float, p: TrackpadParams, role: str, clip, min_w: float
+) -> Island | None:
+    """The clipped island of the diamond at (cx, cy), or ``None`` if no via fits.
+
+    The via goes at the diamond centre (the reference layout) when its pad fits the
+    clipped island there, else at the island's widest point (e.g. a rim
+    half-diamond cut through its centre). An island that cannot hold its via is
+    dropped rather than left as floating copper (ST AN2869).
+    """
+    pieces = _normalize(_island_shape(cx, cy, p, role).intersection(clip), min_w)
+    if not pieces:
+        return None
+    piece = max(pieces, key=lambda g: g.area)
+    iv_r = p.island_via_diameter / 2.0
+    for q in (GeoPoint(cx, cy), polylabel(piece, tolerance=0.01)):
+        if piece.contains(q) and piece.exterior.distance(q) >= iv_r:
+            return Island(piece, Via((round(q.x, ROUND), round(q.y, ROUND))))
+    return None
 
 
 def _normalize(geom, min_width: float = 0.0) -> list[Polygon]:
@@ -368,6 +465,35 @@ def build_trackpad(params: TrackpadParams, *, min_lines: int = MIN_LINES) -> Tra
             return 1.0
         return round(sum(g.area for g in fcu) / full_area, 4) if full_area > 0 else 0.0
 
+    framed = params.framed
+    islands: list[Island] = []
+
+    def _rx_frame(cx: float, cy: float) -> Polygon:
+        """One framed Rx diamond without its necks (the island-survival baseline)."""
+        return _diamond(cx, cy, d).difference(_frame_hole(cx, cy, params))
+
+    def _tx_shape(cx: float, cy: float) -> Polygon:
+        """One Tx diamond's copper: solid, or the framed cell (frame + via disks)."""
+        return _tx_cell(cx, cy, params) if framed else _diamond(cx, cy, d)
+
+    def _add_islands(role: str, centres: list[Point], fcu: list[Polygon]) -> None:
+        """Islands for the kept diamonds at *centres* whose own frame survived.
+
+        "Survived" means at least :data:`_MIN_FRAME_FRACTION` of the diamond's full
+        frame copper is left — a neighbour's neck stub poking into the tip of a
+        frame the mask dropped must not count, or an island would sit in a void.
+        """
+        if not framed:
+            return
+        line = unary_union(fcu)
+        full = (_tx_shape(0.0, 0.0) if role == "tx" else _rx_frame(0.0, 0.0)).area
+        for cx, cy in centres:
+            if line.intersection(_diamond(cx, cy, d)).area < _MIN_FRAME_FRACTION * full:
+                continue  # the frame was clipped/dropped; no island inside it
+            island = _island(cx, cy, params, role, clip, min_w)
+            if island is not None:
+                islands.append(island)
+
     nets: list[TrackpadNet] = []
 
     # -- Rx rows: horizontal, continuous on F.Cu (diamonds + necks) -------- #
@@ -387,7 +513,12 @@ def build_trackpad(params: TrackpadParams, *, min_lines: int = MIN_LINES) -> Tra
                 nx0 = x0 + c * P + d - bw
                 nx1 = x0 + (c + 1) * P - d + bw
                 pieces.append(box(nx0, cy - bw / 2.0, nx1, cy + bw / 2.0))
-        fcu = _normalize(unary_union(pieces).intersection(clip), min_w)
+        row = unary_union(pieces)
+        if framed:  # hollow every kept diamond into a broken frame
+            row = row.difference(
+                unary_union([_frame_hole(x0 + c * P, cy, params) for c in sorted(kept)])
+            )
+        fcu = _normalize(row.intersection(clip), min_w)
         if params.mask_shape == "rect" and not rect_trim:
             if len(fcu) != 1:
                 raise GeometryError(
@@ -402,19 +533,19 @@ def build_trackpad(params: TrackpadParams, *, min_lines: int = MIN_LINES) -> Tra
             fcu = [max(fcu, key=lambda g: g.area)]
         if not fcu:  # the whole row's copper fell outside the clip boundary
             raise TrackpadError(f"Rx row {r + 1} lies entirely outside the {boundary} — {hint}")
-        full_area = (
-            unary_union(
-                [_diamond(x0 + c * P, cy, d) for c in range(C + 1)]
-                + [
-                    box(
-                        x0 + c * P + d - bw, cy - bw / 2.0, x0 + (c + 1) * P - d + bw, cy + bw / 2.0
-                    )
-                    for c in range(C)
-                ]
-            )
-            .intersection(box_clip)
-            .area
+        full_row = unary_union(
+            [_diamond(x0 + c * P, cy, d) for c in range(C + 1)]
+            + [
+                box(x0 + c * P + d - bw, cy - bw / 2.0, x0 + (c + 1) * P - d + bw, cy + bw / 2.0)
+                for c in range(C)
+            ]
         )
+        if framed:
+            full_row = full_row.difference(
+                unary_union([_frame_hole(x0 + c * P, cy, params) for c in range(C + 1)])
+            )
+        full_area = full_row.intersection(box_clip).area
+        _add_islands("rx", [(x0 + c * P, cy) for c in sorted(kept)], fcu)
         nets.append(
             TrackpadNet(
                 pad_number=str(r + 1),
@@ -433,10 +564,12 @@ def build_trackpad(params: TrackpadParams, *, min_lines: int = MIN_LINES) -> Tra
         if conform:
             # Survival decided by the clip: keep each diamond that leaves copper.
             clipped: dict[int, Polygon] = {}
+            clipped_pcs: dict[int, list[Polygon]] = {}
             for k in range(R + 1):
-                pcs = _normalize(_diamond(cx, y0 + k * P, d).intersection(clip), min_w)
+                pcs = _normalize(_tx_shape(cx, y0 + k * P).intersection(clip), min_w)
                 if pcs:
                     clipped[k] = max(pcs, key=lambda g: g.area)
+                    clipped_pcs[k] = pcs
             kept = set(clipped)
         else:
             kept = {k for k in range(R + 1) if _inside(cx, y0 + k * P)}
@@ -460,10 +593,21 @@ def build_trackpad(params: TrackpadParams, *, min_lines: int = MIN_LINES) -> Tra
             # Drop any diamond the surviving bridges can't reach (orphan rim copper).
             kept = _largest_component(kept, edges)
             edges = [(a, b) for a, b in edges if a in kept and b in kept]
-            fcu = [clipped[k] for k in sorted(kept)]
+            if framed:
+                # A cut frame can fall into separate arms; keep every arm that holds
+                # one of its bridge vias (each is joined to the column through it),
+                # else just the largest.
+                via_pts = [GeoPoint(cx, y0 + a * P + voff) for a, _b in edges]
+                via_pts += [GeoPoint(cx, y0 + b * P - voff) for _a, b in edges]
+                fcu = []
+                for k in sorted(kept):
+                    held = [g for g in clipped_pcs[k] if any(g.covers(v) for v in via_pts)]
+                    fcu.extend(held or [clipped[k]])
+            else:
+                fcu = [clipped[k] for k in sorted(kept)]
         else:
             fcu = _normalize(
-                unary_union([_diamond(cx, y0 + k * P, d) for k in sorted(kept)]).intersection(clip),
+                unary_union([_tx_shape(cx, y0 + k * P) for k in sorted(kept)]).intersection(clip),
                 min_w,
             )
 
@@ -484,10 +628,11 @@ def build_trackpad(params: TrackpadParams, *, min_lines: int = MIN_LINES) -> Tra
             )
         bcu = _normalize(unary_union(straps).intersection(clip), min_w) if straps else []
         full_area = (
-            unary_union([_diamond(cx, y0 + k * P, d) for k in range(R + 1)])
+            unary_union([_tx_shape(cx, y0 + k * P) for k in range(R + 1)])
             .intersection(box_clip)
             .area
         )
+        _add_islands("tx", [(cx, y0 + k * P) for k in sorted(kept)], fcu)
         nets.append(
             TrackpadNet(
                 pad_number=str(R + c + 1),
@@ -512,4 +657,4 @@ def build_trackpad(params: TrackpadParams, *, min_lines: int = MIN_LINES) -> Tra
         )
         minx, miny, maxx, maxy = all_copper.bounds
     bounds = (round(minx, ROUND), round(miny, ROUND), round(maxx, ROUND), round(maxy, ROUND))
-    return TrackpadGeometry(nets=nets, bounds=bounds, params=params)
+    return TrackpadGeometry(nets=nets, bounds=bounds, params=params, islands=islands)
