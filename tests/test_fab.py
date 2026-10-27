@@ -69,6 +69,26 @@ def test_trackpad_via_annular_is_half_the_diameter_minus_drill():
     assert feats["bridge via drill"] == (DRILL, pytest.approx(0.3))
 
 
+def test_framed_trackpad_adds_frame_core_gap_and_island_via_features():
+    p = TrackpadParams(
+        electrode_style="framed",
+        frame_width=0.5,
+        core_gap=0.25,
+        island_via_drill=0.25,
+        island_via_diameter=0.45,
+    )
+    feats = {label: (kind, val) for label, kind, val in fab_features(p)}
+    assert feats["electrode frame width"] == (WIDTH, pytest.approx(0.5))
+    assert feats["frame-to-island core gap"] == (CLEARANCE, pytest.approx(0.25))
+    assert feats["island via drill"] == (DRILL, pytest.approx(0.25))
+    assert feats["island via annular ring"] == (ANNULAR, pytest.approx(0.1))
+
+
+def test_solid_trackpad_has_no_framed_features():
+    labels = {label for label, _, _ in fab_features(TrackpadParams())}
+    assert not labels & {"electrode frame width", "frame-to-island core gap"}
+
+
 def test_fab_features_rejects_unknown_type():
     with pytest.raises(TypeError):
         fab_features(object())
@@ -79,6 +99,7 @@ def test_default_widgets_clear_the_default_profile():
     assert check_fab(SliderParams(), "default") == []
     assert check_fab(WheelParams(), "default") == []
     assert check_fab(TrackpadParams(), "default") == []
+    assert check_fab(TrackpadParams(electrode_style="framed"), "default") == []
 
 
 def test_default_trackpad_annular_trips_the_oshpark_profile():

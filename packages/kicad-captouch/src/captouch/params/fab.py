@@ -172,13 +172,22 @@ def _trackpad_features(p: TrackpadParams) -> list[_Feature]:
     # copper clearance on each side — the tightest clearance in the whole pattern.
     neck_pinch = (p.diamond_gap * _SQRT2 - p.bridge_width) / 2.0
     annular = (p.via_diameter - p.via_drill) / 2.0
-    return [
+    feats: list[_Feature] = [
         ("diamond facing-edge gap", CLEARANCE, p.diamond_gap),
         ("bridge-neck pinch clearance", CLEARANCE, neck_pinch),
         ("bridge neck / strap width", WIDTH, p.bridge_width),
         ("bridge via drill", DRILL, p.via_drill),
         ("bridge via annular ring", ANNULAR, annular),
     ]
+    if p.framed:  # IQS9150-style frames: the band, its core gap, the island vias
+        island_annular = (p.island_via_diameter - p.island_via_drill) / 2.0
+        feats += [
+            ("electrode frame width", WIDTH, p.frame_width),
+            ("frame-to-island core gap", CLEARANCE, p.core_gap),
+            ("island via drill", DRILL, p.island_via_drill),
+            ("island via annular ring", ANNULAR, island_annular),
+        ]
+    return feats
 
 
 def _keypad_features(p: KeypadParams) -> list[_Feature]:
