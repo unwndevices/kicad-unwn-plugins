@@ -26,7 +26,9 @@ Five widgets, all derived from one engine (`params` → `geometry` (Shapely) →
 - **Linear sliders** — a row of rectangular / chevron / interdigitated self-cap electrodes.
 - **Wheels** — the slider bent into a continuous annulus around a centre keep-out.
 - **XY diamond trackpads** — a mutual-cap `R×C` diamond matrix on two copper layers (`F.Cu` rows,
-  `B.Cu`-bridged columns through vias); `R + C` pins resolve `R·C` interpolated nodes.
+  `B.Cu`-bridged columns through vias); `R + C` pins resolve `R·C` interpolated nodes. Solid
+  diamonds, or framed ones in the Azoteq IQS9150 style (a copper frame around a grounded,
+  via-stitched core island).
 - **Mutual-cap (CSX) sliders** — the trackpad collapsed to one sense row: N nodes on `N + 1` pins.
 - **Button keypads** — an `R×C` grid of discrete self-cap buttons (rect / circle / diamond),
   one pin each.

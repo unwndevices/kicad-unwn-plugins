@@ -583,4 +583,20 @@ TRACKPAD_PRESETS: dict[str, TrackpadParams] = {
         clip_mode="conform",
         device="iqs550",
     ),
+    # Azoteq IQS9150 evaluation board (IQS9150_V01) electrode style: framed diamonds
+    # at 5 mm pitch — 0.5 mm frames around a GND core island with a centre via to
+    # ground — on the board's 26 Rx × 18 Tx matrix (468 nodes). Rx stays rows here,
+    # so the pad is the eval board's matrix turned 90°. The board's tighter numbers
+    # (0.18 mm clearance, 0.45/0.25 mm vias, ~0.28 mm facing gap with wider-spaced
+    # neck crossings) are swapped for the generator's fab-default-clean values: a
+    # uniform 0.28 mm diamond gap would pinch the necks to ~0.1 mm.
+    "iqs9150": TrackpadParams(
+        name="CT_Trackpad_IQS9150",
+        num_rows=26,
+        num_cols=18,
+        diamond_pitch=5.0,
+        diamond_gap=0.5,
+        electrode_style="framed",
+        frame_width=0.5,
+    ),
 }

@@ -288,3 +288,10 @@ def test_framed_frame_must_exceed_min_feature_on_curved_mask():
                 min_feature=0.5,
             )
         )
+
+
+def test_iqs9150_preset_is_framed_at_eval_board_matrix():
+    p = TRACKPAD_PRESETS["iqs9150"]
+    assert p.framed and p.frame_width == 0.5 and p.diamond_pitch == 5.0
+    # The IQS9150_V01 board: 26 Rx × 18 Tx; Rx stays rows.
+    assert (p.num_rx, p.num_tx) == (26, 18)

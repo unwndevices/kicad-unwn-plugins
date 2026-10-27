@@ -47,6 +47,9 @@ TRACKPAD_EXPECT = {
     "microchip": dict(rows=4, cols=6, pitch=6.0, gap=0.5),
     "compact": dict(rows=3, cols=3, pitch=5.0, gap=0.5),
     "iqs550": dict(rows=10, cols=10, pitch=6.0, gap=0.5),
+    # Azoteq IQS9150_V01 eval board: 26 Rx × 18 Tx framed diamonds at 5 mm pitch —
+    # a laptop-class pad past AT11849's 16-line touch-surface guidance by design.
+    "iqs9150": dict(rows=26, cols=18, pitch=5.0, gap=0.5, max_lines=26, max_nodes=468),
 }
 
 
@@ -99,8 +102,9 @@ def test_trackpad_preset_matches_vendor_reference(key):
     assert p.diamond_pitch == pytest.approx(exp["pitch"])
     assert p.diamond_gap == pytest.approx(exp["gap"])
     # Matrix and pitch stay inside the vendor envelopes (guidelines §4 / §6.4).
-    assert 3 <= p.num_rows <= 16 and 3 <= p.num_cols <= 16
-    assert p.num_nodes <= 100
+    hi = exp.get("max_lines", 16)
+    assert 3 <= p.num_rows <= hi and 3 <= p.num_cols <= hi
+    assert p.num_nodes <= exp.get("max_nodes", 100)
     assert 3.8 <= p.diamond_pitch <= 10.0
 
 

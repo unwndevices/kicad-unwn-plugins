@@ -132,6 +132,27 @@ guard and the DRC gate watch. To size from the panel instead of a count, use
 `--panel-width`/`--panel-height` (see
 [Design from overall size](#design-from-overall-size)).
 
+**Electrode style.** `--electrode-style {solid,framed}` (default `solid`). `framed`
+is the Azoteq IQS9150 reference style: every diamond keeps its place in the lattice,
+its necks, bridges and pin, but becomes a closed copper **frame** of its Rx/Tx net
+(`--frame-width`, default 0.5 mm) around a **GND core island**, `--core-gap`
+(default 0.25 mm) inside it, with one via (`--island-via-drill` /
+`--island-via-diameter`) at its centre down to a ground layer. Mutual coupling is
+on the frame-to-frame edges; the islands shield and shape the field. All islands
+share one extra **`GND`** pad/pin (the same one the support copper uses). The island
+vias are tied together only through the ground layer they land on, so give the
+board a ground plane under the pad (an inner layer or a `B.Cu` pour). Each Tx
+bridge via has to land on its frame (`via_diameter ≤ frame_width·√2`), and Tx
+islands are notched to clear those vias by the core gap. Rim islands cut through
+their centre move their via to the widest point that still fits, or are dropped if
+no point does. The `iqs9150` preset is the evaluation board's 26 Rx × 18 Tx framed
+pad at 5 mm pitch (turned 90°, since Rx stays rows here).
+
+```sh
+captouch trackpad --num-rows 4 --num-cols 5 --electrode-style framed
+captouch trackpad --preset iqs9150
+```
+
 **Mask shape.** `--mask-shape {rect,rrect,circle}` sets the pad's outer outline
 (default `rect`):
 
@@ -457,7 +478,9 @@ captouch gui            # or: captouch-gui
   (inscribe / conform, active only for a curved mask), and a corner-radius (rrect)
   or radius (circle; *Auto* = inscribed) control — that reshapes the live preview.
   The status bar flags any channels a mask shrinks below 50 % area so you can
-  disable them in firmware, and echoes the active device's caps.
+  disable them in firmware, and echoes the active device's caps. An **Electrodes**
+  group switches between solid and framed (IQS9150-style) diamonds, with the frame
+  width, core gap and island via fields enabled only for framed.
 - Every panel has a **Support copper (optional)** group — a *Hatched ground pour
   (B.Cu)* checkbox with margin / hatch-width / pitch spins, and a *Guard / ESD ring
   (F.Cu)* checkbox with width / gap / break spins plus a mask-open toggle. Each
@@ -470,8 +493,9 @@ captouch gui            # or: captouch-gui
   shows the informational advisories (the series-R recommendation, always; the
   overlay sensitivity note when an overlay is set).
 - The **preview** renders the *same* geometry the exporters serialise (WYSIWYG),
-  with zoom/pan, **Fit**, and per-layer toggles (incl. `F.Cu`, `B.Cu`, vias for the
-  trackpad, and the **Ground pour** / **Guard ring** support copper).
+  with zoom/pan, **Fit**, and per-layer toggles (incl. `F.Cu`, `B.Cu`, vias and the
+  framed style's **GND islands** for the trackpad, and the **Ground pour** /
+  **Guard ring** support copper).
 - A **Fab profile** selector re-checks the design live; any violation appears in a
   non-blocking amber banner under the preview.
 - Every field carries a hover **tooltip**; an invalid value outlines the offending
@@ -535,7 +559,9 @@ pads.
    [refill caveat](#validating-with-kicad-cli) if you script `kicad-cli`.
 
 The trackpad's and mutual slider's Tx bridges live on `B.Cu`, so their boards must
-have ≥2 copper layers; so does the hatched ground pour.
+have ≥2 copper layers; so does the hatched ground pour. A framed trackpad's `GND` pin
+covers its core islands too: wire it to ground and put a ground plane under the pad
+so the island vias have something to land on.
 
 ## KiCad plugin (design from inside KiCad)
 
