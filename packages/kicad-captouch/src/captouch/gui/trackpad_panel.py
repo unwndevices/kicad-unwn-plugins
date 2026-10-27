@@ -2,7 +2,8 @@
 
 Mirrors the slider / wheel panels but for the trackpad's fields: a mutual-cap
 diamond matrix has no shape / teeth / finger knobs — just the matrix size, the
-diamond pitch and gap, and the bridge / via dimensions. Editing anything emits
+diamond pitch and gap, the electrode style (solid, or IQS9150-style framed with
+GND core islands), and the bridge / via dimensions. Editing anything emits
 :attr:`changed`.
 """
 
@@ -19,7 +20,14 @@ from PySide6.QtWidgets import (
 )
 
 from ..geometry import build_trackpad
-from ..params import CLIP_MODES, DEVICES, MASK_SHAPES, TRACKPAD_PRESETS, TrackpadParams
+from ..params import (
+    CLIP_MODES,
+    DEVICES,
+    ELECTRODE_STYLES,
+    MASK_SHAPES,
+    TRACKPAD_PRESETS,
+    TrackpadParams,
+)
 from ._panel_base import PRESET_PLACEHOLDER as _PRESET_PLACEHOLDER
 from ._panel_base import PanelBase
 
@@ -106,6 +114,24 @@ class TrackpadPanel(PanelBase):
         df.addRow("Gap", self.diamond_gap)
         root.addWidget(dim_box)
 
+        # Electrode style: solid diamonds, or framed (Azoteq IQS9150 style) — a
+        # copper frame per diamond around a GND core island with a centre via.
+        self.electrode_style = QComboBox()
+        self.electrode_style.addItems(ELECTRODE_STYLES)
+        self.electrode_style.currentTextChanged.connect(self._on_style)
+        self.frame_width = self._dspin(0.1, 3.0, 0.05)
+        self.core_gap = self._dspin(0.05, 2.0, 0.05)
+        self.island_via_drill = self._dspin(0.1, 1.0, 0.05)
+        self.island_via_diameter = self._dspin(0.2, 2.0, 0.05)
+        style_box = QGroupBox("Electrodes")
+        sf = QFormLayout(style_box)
+        sf.addRow("Style", self.electrode_style)
+        sf.addRow("Frame width (mm)", self.frame_width)
+        sf.addRow("Core gap (mm)", self.core_gap)
+        sf.addRow("Island via drill (mm)", self.island_via_drill)
+        sf.addRow("Island via diameter (mm)", self.island_via_diameter)
+        root.addWidget(style_box)
+
         # Bridges & vias.
         self.bridge_width = self._dspin(0.1, 2.0, 0.05)
         self.via_drill = self._dspin(0.1, 1.0, 0.05)
@@ -148,6 +174,7 @@ class TrackpadPanel(PanelBase):
         self.name.textEdited.connect(self._emit)
         self._on_mask()  # set initial enabled state for the default rect mask
         self._on_size_mode()  # initial gating: count-driven by default
+        self._on_style()  # framed-only fields start disabled for the solid default
 
         self._set_tooltips(
             {
@@ -168,6 +195,17 @@ class TrackpadPanel(PanelBase):
                 self.num_cols: "Tx (drive) columns bridged on B.Cu (≥ 2; no upper cap).",
                 self.diamond_pitch: "Row/column centre spacing P (mm).",
                 self.diamond_gap: "Copper-to-copper gap A (mm) between diamonds.",
+                self.electrode_style: (
+                    "solid diamonds, or framed (Azoteq IQS9150 style): each diamond is a "
+                    "copper frame of its Rx/Tx net around a GND core island with a via "
+                    "at its centre to a ground layer."
+                ),
+                self.frame_width: "Framed: width (mm) of each electrode's copper frame band.",
+                self.core_gap: "Framed: clearance (mm) from the frame to its GND core island.",
+                self.island_via_drill: "Framed: island ground via finished hole (mm).",
+                self.island_via_diameter: (
+                    "Framed: island ground via outer copper diameter (mm). Annular ≥ 0.1 mm."
+                ),
                 self.bridge_width: "F.Cu neck / B.Cu strap width (mm) at a Tx bridge.",
                 self.via_drill: "Bridge via finished hole diameter (mm).",
                 self.via_diameter: "Bridge via outer copper diameter (mm). Annular ring ≥ 0.1 mm.",
@@ -191,6 +229,13 @@ class TrackpadPanel(PanelBase):
         self.corner_radius.setEnabled(shape == "rrect")
         self.radius_auto.setEnabled(shape == "circle")
         self.radius.setEnabled(shape == "circle" and not self.radius_auto.isChecked())
+        self._emit()
+
+    def _on_style(self, *args) -> None:
+        """Enable the frame / island fields only for the framed style."""
+        framed = self.electrode_style.currentText() == "framed"
+        for w in (self.frame_width, self.core_gap, self.island_via_drill, self.island_via_diameter):
+            w.setEnabled(framed)
         self._emit()
 
     def _on_size_mode(self, *args) -> None:
@@ -246,6 +291,11 @@ class TrackpadPanel(PanelBase):
             via_diameter=self.via_diameter.value(),
             mask_shape=shape,
             clip_mode=self.clip_mode.currentText(),
+            electrode_style=self.electrode_style.currentText(),
+            frame_width=self.frame_width.value(),
+            core_gap=self.core_gap.value(),
+            island_via_drill=self.island_via_drill.value(),
+            island_via_diameter=self.island_via_diameter.value(),
             name=self.name.text() or "CT_Trackpad",
             device=(None if self.device.currentIndex() == 0 else self.device.currentText()),
         )
@@ -295,6 +345,11 @@ class TrackpadPanel(PanelBase):
             self.via_diameter.setValue(p.via_diameter)
             self.mask_shape.setCurrentText(p.mask_shape)
             self.clip_mode.setCurrentText(p.clip_mode)
+            self.electrode_style.setCurrentText(p.electrode_style)
+            self.frame_width.setValue(p.frame_width)
+            self.core_gap.setValue(p.core_gap)
+            self.island_via_drill.setValue(p.island_via_drill)
+            self.island_via_diameter.setValue(p.island_via_diameter)
             if p.corner_radius:
                 self.corner_radius.setValue(p.corner_radius)
             self.radius_auto.setChecked(p.radius is None)
@@ -304,5 +359,6 @@ class TrackpadPanel(PanelBase):
             self._load_sensing(p)
             self._on_mask()
             self._on_size_mode()
+            self._on_style()
         finally:
             self._loading = False

@@ -348,6 +348,46 @@ def test_trackpad_preview_matches_geometry(qapp):
         assert win.preview.net_polygon_points(net.pad_number) == expected
 
 
+def test_trackpad_panel_framed_style_round_trips_and_gates_fields(qapp):
+    from captouch.gui.trackpad_panel import TrackpadPanel
+
+    panel = TrackpadPanel()
+    assert panel.params().electrode_style == "solid"
+    assert not panel.frame_width.isEnabled()  # framed-only fields inert for solid
+    framed = TrackpadParams(
+        num_rows=4,
+        num_cols=4,
+        electrode_style="framed",
+        frame_width=0.6,
+        core_gap=0.3,
+        island_via_drill=0.25,
+        island_via_diameter=0.5,
+    )
+    panel.set_params(framed)
+    assert panel.frame_width.isEnabled() and panel.island_via_diameter.isEnabled()
+    got = panel.params()
+    assert (got.electrode_style, got.frame_width, got.core_gap) == ("framed", 0.6, 0.3)
+    assert (got.island_via_drill, got.island_via_diameter) == (0.25, 0.5)
+
+
+def test_framed_trackpad_preview_matches_geometry(qapp):
+    from captouch.gui.app import MainWindow
+
+    win = MainWindow()
+    win._on_widget_changed(2)
+    win.panel.set_params(TrackpadParams(num_rows=3, num_cols=3, electrode_style="framed"))
+    win._rebuild()
+    geo = win.preview.geometry_model
+    assert geo.islands
+    # Frames (with holes) are drawn as paths; their outlines still match exactly.
+    for net in geo.nets:
+        expected = [polygon_points(p) for p in net.bcu] + [polygon_points(p) for p in net.fcu]
+        assert win.preview.net_polygon_points(net.pad_number) == expected
+    # Each island: its copper + via annulus + drilled hole, on the "islands" layer.
+    assert len(win.preview._layer_items["islands"]) == 3 * len(geo.islands)
+    assert f"framed, {len(geo.islands)} GND islands" in win._status.text()
+
+
 def test_trackpad_panel_size_driven_derives_counts(qapp):
     from captouch.gui.trackpad_panel import TrackpadPanel
 

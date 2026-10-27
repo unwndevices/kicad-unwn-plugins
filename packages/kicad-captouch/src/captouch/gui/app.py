@@ -110,6 +110,8 @@ def _summary(geo: WidgetGeometry) -> str:
             f"pitch {tp.diamond_pitch:.2f} gap {tp.diamond_gap:.2f} mm · "
             f"extent {maxx - minx:.2f} × {maxy - miny:.2f} mm"
         )
+        if tp.framed:  # IQS9150-style frames around GND core islands
+            summary += f" · framed, {len(geo.islands)} GND islands"
         if tp.device:  # a controller profile is enforcing its channel caps
             summary += f" · {DEVICES[tp.device].channels_note()}"
         partials = geo.partial_channels()

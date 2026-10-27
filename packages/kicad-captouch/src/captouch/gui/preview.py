@@ -19,7 +19,12 @@ from typing import Union
 
 from PySide6.QtCore import QPointF, QRectF, QSize, Qt
 from PySide6.QtGui import QBrush, QColor, QImage, QPainter, QPainterPath, QPen, QPolygonF
-from PySide6.QtWidgets import QGraphicsPolygonItem, QGraphicsScene, QGraphicsView
+from PySide6.QtWidgets import (
+    QGraphicsPathItem,
+    QGraphicsPolygonItem,
+    QGraphicsScene,
+    QGraphicsView,
+)
 
 from ..export.footprint import COURTYARD_MARGIN
 from ..geometry import (
@@ -39,8 +44,8 @@ WidgetGeometry = Union[SliderGeometry, WheelGeometry, TrackpadGeometry, KeypadGe
 __all__ = ["PreviewView", "LAYERS"]
 
 #: Toggleable preview layers, in stacking order, with human labels. ``back_copper``
-#: and ``vias`` are only populated by the (two-layer) trackpad; ``ground`` and
-#: ``guard`` only by the optional support copper.
+#: and ``vias`` are only populated by the (two-layer) trackpad, ``islands`` only by
+#: a framed trackpad; ``ground`` and ``guard`` only by the optional support copper.
 LAYERS: tuple[tuple[str, str], ...] = (
     ("fab", "Fab outline"),
     ("courtyard", "Courtyard"),
@@ -49,6 +54,7 @@ LAYERS: tuple[tuple[str, str], ...] = (
     ("copper", "F.Cu copper"),
     ("guard", "Guard ring"),
     ("dummies", "Dummy (GND)"),
+    ("islands", "GND islands"),
     ("vias", "Vias"),
     ("anchors", "Pad anchors"),
     ("labels", "Pad numbers"),
@@ -127,7 +133,8 @@ class PreviewView(QGraphicsView):
         self._support: SupportCopper | None = None  # cached for the current geometry
         self._layer_items: dict[str, list] = {name: [] for name, _ in LAYERS}
         self._electrode_items: dict[str, QGraphicsPolygonItem] = {}  # pad_number -> item
-        self._net_items: dict[str, list[QGraphicsPolygonItem]] = {}  # trackpad net items
+        # trackpad net items (polygons; paths for framed copper with holes)
+        self._net_items: dict[str, list[QGraphicsPolygonItem | QGraphicsPathItem]] = {}
         self._layer_visible: dict[str, bool] = {name: True for name, _ in LAYERS}
         self._layer_visible["anchors"] = False  # off by default (visual noise)
 
@@ -166,7 +173,13 @@ class PreviewView(QGraphicsView):
         """Vertices drawn for every copper piece of a trackpad net (WYSIWYG check)."""
         out = []
         for item in self._net_items[pad_number]:
-            out.append([(round(p.x(), 4), round(p.y(), 4)) for p in item.polygon().toList()])
+            if isinstance(item, QGraphicsPathItem):  # framed copper: exterior subpath
+                pts = item.path().toSubpathPolygons()[0].toList()
+                if len(pts) > 1 and pts[0] == pts[-1]:
+                    pts = pts[:-1]
+            else:
+                pts = item.polygon().toList()
+            out.append([(round(p.x(), 4), round(p.y(), 4)) for p in pts])
         return out
 
     def fit(self) -> None:
@@ -288,6 +301,7 @@ class PreviewView(QGraphicsView):
         # draws faithfully (the WYSIWYG guarantee) rather than via a lossy shim.
         if isinstance(geo, TrackpadGeometry):
             self._draw_trackpad(geo)
+            self._draw_islands(geo)
         else:
             self._draw_electrodes(geo)
 
@@ -372,13 +386,13 @@ class PreviewView(QGraphicsView):
                 )
                 self._register("back_copper", item)
                 items.append(item)
-            # F.Cu copper (diamonds + Rx necks).
+            # F.Cu copper (diamonds + Rx necks; framed: frames, whose holes need a path).
             for poly in net.fcu:
-                item = self._scene.addPolygon(
-                    _qpoly(polygon_points(poly)),
-                    self._cosmetic_pen(_COPPER_EDGE, 1.2),
-                    QBrush(_COPPER_FILL),
-                )
+                pen, brush = self._cosmetic_pen(_COPPER_EDGE, 1.2), QBrush(_COPPER_FILL)
+                if poly.interiors:
+                    item = self._scene.addPath(_qpath(poly), pen, brush)
+                else:
+                    item = self._scene.addPolygon(_qpoly(polygon_points(poly)), pen, brush)
                 self._register("copper", item)
                 items.append(item)
             # Vias: outer annulus + drilled hole.
@@ -413,6 +427,29 @@ class PreviewView(QGraphicsView):
                 label.setScale(scale)
                 label.setPos(ax - br.width() * scale / 2.0, ay - br.height() * scale / 2.0)
             self._register("labels", label)
+
+    def _draw_islands(self, geo: TrackpadGeometry) -> None:
+        """Render a framed trackpad's GND core islands and their ground vias."""
+        d, drill = geo.params.island_via_diameter, geo.params.island_via_drill
+        for isl in geo.islands:
+            self._register(
+                "islands",
+                self._scene.addPolygon(
+                    _qpoly(polygon_points(isl.copper)),
+                    self._cosmetic_pen(_DUMMY_EDGE, 1.0),
+                    QBrush(_DUMMY_FILL),
+                ),
+            )
+            ax, ay = isl.via.at
+            for dia, brush in ((d, QBrush(_VIA_FILL)), (drill, QBrush(_BG))):
+                self._register(
+                    "islands",
+                    self._scene.addEllipse(
+                        QRectF(ax - dia / 2, ay - dia / 2, dia, dia),
+                        self._cosmetic_pen(_VIA_EDGE, 1.0),
+                        brush,
+                    ),
+                )
 
     def _register(self, layer: str, item) -> None:
         item.setVisible(self._layer_visible[layer])
