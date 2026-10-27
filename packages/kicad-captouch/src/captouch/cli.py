@@ -32,6 +32,7 @@ from .params import (
     DEFAULT_PROFILE,
     DEVICES,
     DISABLE_AREA_FRACTION,
+    ELECTRODE_STYLES,
     FAB_PROFILES,
     KEYPAD_PRESETS,
     MASK_SHAPES,
@@ -710,6 +711,11 @@ def _trackpad_params_from_args(args: argparse.Namespace) -> TrackpadParams:
         ("corner_radius", "corner_radius"),
         ("radius", "radius"),
         ("device", "device"),
+        ("electrode_style", "electrode_style"),
+        ("frame_width", "frame_width"),
+        ("core_gap", "core_gap"),
+        ("island_via_drill", "island_via_drill"),
+        ("island_via_diameter", "island_via_diameter"),
     ):
         value = getattr(args, flag)
         if value is not None:
@@ -792,6 +798,7 @@ def _trackpad(args: argparse.Namespace) -> int:
     if params.device:
         print(f"    device: {DEVICES[params.device].channels_note()}")
     _report_panel(params)
+    _report_framed(geo)
     _report_partial_channels(geo)
     _report_support(geo)
     _report_fab(violations, args.fab_profile, strict=False)
@@ -813,6 +820,22 @@ def _report_panel(params: TrackpadParams) -> None:
     print(
         f"    sized from panel: {params.num_cols}x{params.num_rows} diamonds at "
         f"{params.diamond_pitch:.2f} mm pitch span {lw:.2f} x {lh:.2f} mm ({fit})"
+    )
+
+
+def _report_framed(geo) -> None:
+    """For framed electrodes, summarise the frames and their GND core islands."""
+    p = geo.params
+    if not p.framed:
+        return
+    print(
+        f"    framed electrodes: {p.frame_width:.2f} mm frames, {p.core_gap:.2f} mm core gap, "
+        f"{len(geo.islands)} GND core islands (via {p.island_via_diameter:.2f}/"
+        f"{p.island_via_drill:.2f} mm)"
+    )
+    print(
+        f"    islands tied to the GND pin (pad {net_tie_number(geo)}); "
+        f"give their vias a ground layer to land on"
     )
 
 
@@ -889,6 +912,24 @@ def _add_trackpad_parser(sub: argparse._SubParsersAction) -> None:
         type=float,
         help="circle mask radius (mm; with --mask-shape circle; "
         "default = inscribed 0.5·min(width,height))",
+    )
+    p.add_argument(
+        "--electrode-style",
+        choices=ELECTRODE_STYLES,
+        help="solid diamonds (default) or framed (Azoteq IQS9150 style: frame + GND "
+        "core island with a centre via in every diamond)",
+    )
+    p.add_argument("--frame-width", type=float, help="framed: electrode frame band width (mm)")
+    p.add_argument(
+        "--core-gap", type=float, help="framed: clearance from frame to GND core island (mm)"
+    )
+    p.add_argument(
+        "--island-via-drill", type=float, help="framed: island ground via hole diameter (mm)"
+    )
+    p.add_argument(
+        "--island-via-diameter",
+        type=float,
+        help="framed: island ground via outer copper diameter (mm)",
     )
     p.add_argument(
         "--iqs550-config",

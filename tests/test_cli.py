@@ -337,6 +337,46 @@ def test_trackpad_conform_circle_reports_partial_channels(tmp_path, capsys):
     assert (tmp_path / "T.kicad_mod").exists()
 
 
+def test_trackpad_framed_style_writes_islands_and_gnd_pin(tmp_path, capsys):
+    rc = main(
+        [
+            "trackpad",
+            "--out",
+            str(tmp_path),
+            "--name",
+            "T",
+            "--num-rows",
+            "3",
+            "--num-cols",
+            "3",
+            "--electrode-style",
+            "framed",
+            "--frame-width",
+            "0.5",
+            "--core-gap",
+            "0.3",
+            "--island-via-drill",
+            "0.3",
+            "--island-via-diameter",
+            "0.5",
+        ]
+    )
+    assert rc == 0
+    out = capsys.readouterr().out
+    assert "framed electrodes" in out and "GND core islands" in out
+    assert "GND pin (pad 7)" in out
+    assert "(drill 0.3)" in (tmp_path / "T.kicad_mod").read_text()
+    assert '"GND"' in (tmp_path / "T.kicad_sym").read_text()
+
+
+def test_trackpad_framed_rejects_bad_island(tmp_path, capsys):
+    rc = main(
+        ["trackpad", "--out", str(tmp_path), "--electrode-style", "framed", "--core-gap", "0"]
+    )
+    assert rc == 2
+    assert "core_gap" in capsys.readouterr().out
+
+
 def test_trackpad_panel_size_derives_counts(tmp_path, capsys):
     # 52x38 @ 5 mm -> round to 10x8 diamonds; outline held at the requested size.
     rc = main(
@@ -418,6 +458,11 @@ def test_trackpad_min_feature_tracks_fab_profile():
         corner_radius=None,
         radius=None,
         device=None,
+        electrode_style=None,
+        frame_width=None,
+        core_gap=None,
+        island_via_drill=None,
+        island_via_diameter=None,
         # support-copper flags (all off / unset)
         ground_hatch=False,
         guard_ring=False,
